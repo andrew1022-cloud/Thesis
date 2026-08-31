@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "1097403188692",
+    "project_id": "reveduc-5a5b9",
+    "storage_bucket": "reveduc-5a5b9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1097403188692:android:dccabe6f70a05a37b68241",
+        "android_client_info": {
+          "package_name": "com.example.thesis_test"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAwIF3IEYoJ-wkoAS0Oj1a-c1wfYfyEHiA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1097403188692:android:3789a9ff73b7f5a4b68241",
+        "android_client_info": {
+          "package_name": "com.reveduc.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAwIF3IEYoJ-wkoAS0Oj1a-c1wfYfyEHiA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
