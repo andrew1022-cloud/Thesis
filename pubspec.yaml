@@ -26,7 +26,7 @@ dependencies:
   docx_to_text: ^1.0.1
   syncfusion_flutter_pdf: ^33.2.13
   flutter_local_notifications: ^18.0.1
-  flutter_timezone: ^1.0.8
+  flutter_timezone: ^4.1.0
   timezone: ^0.9.4
 
 dev_dependencies:
