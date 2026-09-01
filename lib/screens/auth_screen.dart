@@ -51,6 +51,20 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  Future<void> _handleGoogleSignIn() async {
+    final success = await _controller.continueWithGoogle();
+    if (!success || !mounted) return;
+
+    // Same admin-vs-home routing as email/password login.
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => _controller.isAdminLogin
+            ? const AdminScreen()
+            : const HomeScreen(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cream = Theme.of(context).scaffoldBackgroundColor;
@@ -181,7 +195,9 @@ class _AuthScreenState extends State<AuthScreen> {
                             width: 160,
                             height: 46,
                             child: OutlinedButton(
-                              onPressed: _controller.continueWithGoogle,
+                              onPressed: _controller.isLoading
+                                  ? null
+                                  : _handleGoogleSignIn,
                               style: OutlinedButton.styleFrom(
                                 backgroundColor: Theme.of(context).cardColor,
                                 side: BorderSide(
@@ -190,31 +206,61 @@ class _AuthScreenState extends State<AuthScreen> {
                                   borderRadius: BorderRadius.circular(24),
                                 ),
                               ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Text(
-                                    'G',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF4285F4),
+                              child: _controller.isLoading
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.2,
+                                        color: maroon,
+                                      ),
+                                    )
+                                  : Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        const Text(
+                                          'G',
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF4285F4),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Google',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                            color: primaryTextColor(context),
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Google',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: primaryTextColor(context),
-                                    ),
-                                  ),
-                                ],
-                              ),
                             ),
                           ),
                         ),
+
+                        // Google-sign-in errors surface here since the
+                        // button lives outside both the login and
+                        // signup forms (which have their own error
+                        // slots for their own flows).
+                        if (_controller.errorMessage != null &&
+                            !_controller.isLoading) ...[
+                          const SizedBox(height: 8),
+                          Center(
+                            child: Text(
+                              _controller.errorMessage!,
+                              style: const TextStyle(
+                                color: Colors.red,
+                                fontSize: 12,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ],
+
                         const SizedBox(height: 20),
                       ],
                     ),

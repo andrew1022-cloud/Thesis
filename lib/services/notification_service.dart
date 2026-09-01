@@ -1,8 +1,19 @@
+import 'dart:typed_data' show Int64List, Uint8List;
+import 'dart:ui' show Color;
+import 'dart:ui' as ui;
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
+
+/// Brand colors, duplicated here (rather than importing home_widgets.dart)
+/// so this service has zero dependency on the widget layer.
+const Color _kMaroon = Color(0xFF6E1B24);
+const Color _kGold = Color(0xFFC9A24B);
 
 /// One scheduled reminder's copy.
 class _ReminderCopy {
@@ -20,6 +31,11 @@ class _ReminderCopy {
 /// only actually fire if the user *doesn't* open the app again before
 /// then, because opening the app cancels and reschedules the whole
 /// ladder from scratch.
+///
+/// Notifications are styled to match RevEduc's brand: a maroon accent
+/// color, an expandable "big text" body so the full message is
+/// readable without opening the app, and the app's launcher icon as
+/// both the small and large icon.
 ///
 /// Add to pubspec.yaml:
 ///   dependencies:
@@ -52,6 +68,174 @@ class NotificationService {
   static const String _channelDescription =
       "Reminders to come back and review when you haven't opened "
       'RevEduc in a while.';
+
+  /// The real RevEduc logo, decoded once from assets and reused as
+  /// the large icon on every notification. Unlike the status-bar
+  /// small icon, Android does NOT flatten the large icon to a
+  /// silhouette — it renders full color, so this is what actually
+  /// makes a notification look "branded" rather than generic.
+  Uint8List? _logoBytes;
+  ui.Image? _logoImage;
+
+  /// Rendered notification-card PNGs, keyed by "title|body" so the
+  /// same reminder text isn't re-rendered every time the ladder is
+  /// rescheduled (which happens on every app open).
+  final Map<String, Uint8List> _cardCache = {};
+
+  Future<Uint8List> _loadLogoBytes() async {
+    if (_logoBytes != null) return _logoBytes!;
+    final data = await rootBundle.load('assets/images/logo.png');
+    _logoBytes = data.buffer.asUint8List();
+    return _logoBytes!;
+  }
+
+  Future<AndroidBitmap<Object>> _resolveLargeIcon() async {
+    try {
+      return ByteArrayAndroidBitmap(await _loadLogoBytes());
+    } catch (e) {
+      debugPrint('NotificationService: failed to load logo asset: $e');
+      // Falls back to the (flattened, monochrome) launcher icon rather
+      // than showing no large icon at all.
+      return const DrawableResourceAndroidBitmap('@mipmap/ic_launcher');
+    }
+  }
+
+  Future<ui.Image?> _resolveLogoImage() async {
+    if (_logoImage != null) return _logoImage;
+    try {
+      _logoImage = await decodeImageFromList(await _loadLogoBytes());
+      return _logoImage;
+    } catch (e) {
+      debugPrint('NotificationService: failed to decode logo image: $e');
+      return null;
+    }
+  }
+
+  /// Renders the fully custom "expanded" notification card as a PNG:
+  /// maroon background, the real app logo in a badge, a Georgia
+  /// title, and a Roboto body — matching the in-app maroon cards
+  /// pixel-for-pixel, which a plain system notification can't do.
+  Future<Uint8List> _renderNotificationCard({
+    required String title,
+    required String body,
+  }) async {
+    final cacheKey = '$title|$body';
+    final cached = _cardCache[cacheKey];
+    if (cached != null) return cached;
+
+    const double width = 1000;
+    const double height = 500;
+    const double padding = 48;
+    const double badgeSize = 96;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(
+      recorder,
+      const ui.Rect.fromLTWH(0, 0, width, height),
+    );
+
+    // Background.
+    canvas.drawRect(
+      const ui.Rect.fromLTWH(0, 0, width, height),
+      ui.Paint()..color = _kMaroon,
+    );
+
+    // Logo badge — translucent white circle with the real logo inside.
+    final badgeCenter =
+        const ui.Offset(padding + badgeSize / 2, padding + badgeSize / 2);
+    canvas.drawCircle(
+      badgeCenter,
+      badgeSize / 2,
+      ui.Paint()..color = const Color(0x26FFFFFF),
+    );
+
+    final logoImage = await _resolveLogoImage();
+    if (logoImage != null) {
+      final logoSize = badgeSize * 0.62;
+      canvas.save();
+      canvas.clipPath(
+        ui.Path()
+          ..addOval(ui.Rect.fromCircle(center: badgeCenter, radius: badgeSize / 2)),
+      );
+      canvas.drawImageRect(
+        logoImage,
+        ui.Rect.fromLTWH(
+            0, 0, logoImage.width.toDouble(), logoImage.height.toDouble()),
+        ui.Rect.fromCenter(
+            center: badgeCenter, width: logoSize, height: logoSize),
+        ui.Paint()..filterQuality = ui.FilterQuality.high,
+      );
+      canvas.restore();
+    }
+
+    // "REVEDUC" wordmark next to the badge.
+    final labelPainter = TextPainter(
+      text: const TextSpan(
+        text: 'REVEDUC',
+        style: TextStyle(
+          color: _kGold,
+          fontSize: 22,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 2,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    labelPainter.paint(
+      canvas,
+      ui.Offset(
+        padding + badgeSize + 20,
+        padding + (badgeSize - labelPainter.height) / 2,
+      ),
+    );
+
+    // Title — Georgia, matching in-app headings.
+    final titlePainter = TextPainter(
+      text: TextSpan(
+        text: title,
+        style: const TextStyle(
+          color: Color(0xFFFFFFFF),
+          fontSize: 40,
+          fontWeight: FontWeight.bold,
+          fontFamily: 'Georgia',
+          height: 1.2,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 2,
+      ellipsis: '…',
+    )..layout(maxWidth: width - padding * 2);
+    final titleTop = padding + badgeSize + 24;
+    titlePainter.paint(canvas, ui.Offset(padding, titleTop));
+
+    // Body — Roboto (app default).
+    final bodyPainter = TextPainter(
+      text: TextSpan(
+        text: body,
+        style: const TextStyle(
+          color: Color(0xD9FFFFFF), // white @ 85%
+          fontSize: 26,
+          fontFamily: 'Roboto',
+          height: 1.4,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 3,
+      ellipsis: '…',
+    )..layout(maxWidth: width - padding * 2);
+    bodyPainter.paint(
+      canvas,
+      ui.Offset(padding, titleTop + titlePainter.height + 14),
+    );
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(width.toInt(), height.toInt());
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    final bytes = byteData!.buffer.asUint8List();
+
+    _cardCache[cacheKey] = bytes;
+    return bytes;
+  }
 
   /// Days-since-last-open → what the notification says. Escalates
   /// from a light nudge to a more direct one, the same shape as
@@ -114,11 +298,17 @@ class NotificationService {
       const InitializationSettings(android: androidInit, iOS: iosInit),
     );
 
-    const androidChannel = AndroidNotificationChannel(
+    // High importance + lights/vibration so the channel itself carries
+    // the "premium" feel, not just each individual notification.
+    final androidChannel = AndroidNotificationChannel(
       _channelId,
       _channelName,
       description: _channelDescription,
       importance: Importance.high,
+      enableLights: true,
+      ledColor: _kGold,
+      enableVibration: true,
+      vibrationPattern: Int64List.fromList(const [0, 250, 150, 250]),
     );
     await _plugin
         .resolvePlatformSpecificImplementation<
@@ -153,6 +343,66 @@ class NotificationService {
           true;
     }
     return true;
+  }
+
+  /// Builds the branded notification details shared by every reminder:
+  /// a maroon-tinted Android notification carrying the real RevEduc
+  /// logo as its large icon, with an expandable "big text" body, plus
+  /// an iOS variant with a matching subtitle and sound.
+  ///
+  /// Note on `color`: Android only paints a full colored *background*
+  /// (what `colorized` does) on notifications tied to a call, a media
+  /// session, or a foreground service — a plain reminder like this one
+  /// isn't eligible, so the system silently ignores that flag. `color`
+  /// on its own still tints the app-name text and expand affordance on
+  /// most launchers (Pixel, One UI, etc.), which is the most Android
+  /// allows here without a fully custom notification layout.
+  Future<NotificationDetails> _brandedDetails({
+    required String title,
+    required String body,
+  }) async {
+    final largeIcon = await _resolveLargeIcon();
+    final cardBytes = await _renderNotificationCard(title: title, body: body);
+
+    final androidDetails = AndroidNotificationDetails(
+      _channelId,
+      _channelName,
+      channelDescription: _channelDescription,
+      importance: Importance.high,
+      priority: Priority.high,
+      color: _kMaroon,
+      icon: '@mipmap/ic_launcher',
+      largeIcon: largeIcon,
+      styleInformation: BigPictureStyleInformation(
+        ByteArrayAndroidBitmap(cardBytes),
+        largeIcon: largeIcon,
+        hideExpandedLargeIcon: true,
+        contentTitle: '<b>$title</b>',
+        htmlFormatContentTitle: true,
+        summaryText: 'RevEduc',
+        htmlFormatSummaryText: false,
+      ),
+      ticker: title,
+      category: AndroidNotificationCategory.reminder,
+      visibility: NotificationVisibility.public,
+      enableLights: true,
+      ledColor: _kGold,
+      ledOnMs: 800,
+      ledOffMs: 800,
+      enableVibration: true,
+      vibrationPattern: Int64List.fromList(const [0, 250, 150, 250]),
+    );
+
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+      subtitle: 'RevEduc',
+      sound: 'default',
+      interruptionLevel: InterruptionLevel.active,
+    );
+
+    return NotificationDetails(android: androidDetails, iOS: iosDetails);
   }
 
   /// Resets the inactivity-reminder ladder: cancels whatever was
@@ -199,16 +449,7 @@ class NotificationService {
         copy.title,
         copy.body,
         tz.TZDateTime.from(target, tz.local),
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            _channelId,
-            _channelName,
-            channelDescription: _channelDescription,
-            importance: Importance.high,
-            priority: Priority.high,
-          ),
-          iOS: DarwinNotificationDetails(),
-        ),
+        await _brandedDetails(title: copy.title, body: copy.body),
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
@@ -231,37 +472,26 @@ class NotificationService {
   /// still nag about a review streak.
   Future<void> cancelAll() => _plugin.cancelAll();
 
-  /// Dev/debug helper — fires a single test notification 10 seconds
-  /// from now, so you can verify permissions, the notification
-  /// channel, and appearance without waiting days for the real
-  /// reminders. Not called anywhere by default; wire it to a button
-  /// in a debug-only menu (see ProfileScreen's Developer Tools).
+  /// Dev/debug helper — fires a single test notification immediately,
+  /// so tapping its button in the UI shows the styled notification
+  /// right away instead of making you wait and check the tray blind.
+  /// Not called anywhere by default; wire it to a button in a
+  /// debug-only menu (see ProfileScreen's Developer Tools).
   Future<void> scheduleTestNotification() async {
     if (!_initialized) await init();
     await requestPermission();
 
-    final target =
-        tz.TZDateTime.now(tz.local).add(const Duration(seconds: 10));
+    const title = 'Test reminder';
+    const body =
+        'If you can see this styled nicely — maroon accent, big-text '
+        'body, large icon — notifications are wired up correctly.';
 
     try {
-      await _plugin.zonedSchedule(
+      await _plugin.show(
         _testNotificationId,
-        'Test reminder',
-        'If you can see this, notifications are wired up correctly.',
-        target,
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            _channelId,
-            _channelName,
-            channelDescription: _channelDescription,
-            importance: Importance.high,
-            priority: Priority.high,
-          ),
-          iOS: DarwinNotificationDetails(),
-        ),
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
+        title,
+        body,
+        await _brandedDetails(title: title, body: body),
       );
     } catch (e) {
       debugPrint('NotificationService: test notification failed: $e');

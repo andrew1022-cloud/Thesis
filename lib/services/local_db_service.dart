@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
+import 'notes_db_service.dart';
 
 /// LocalDbService
 /// ----------------
@@ -1036,6 +1037,7 @@ class LocalDbService {
   /// right after login — it's what restores progress on a fresh
   /// install or new device.
   Future<void> syncUserDataFromFirestore(String uid) async {
+    await NotesDbService.instance.syncFromFirestore(uid);
     final db = await database;
 
     final attemptsSnapshot = await _firestore
@@ -1130,6 +1132,7 @@ class LocalDbService {
         conflictAlgorithm: ConflictAlgorithm.ignore,
       );
     }
+
   }
 
   /// Retries pushing any local rows that couldn't reach Firestore

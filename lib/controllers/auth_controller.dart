@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 /// Holds all state and business logic for the Log-in / Sign-up screen.
 /// The UI (AuthScreen) only reads from this controller and calls its
@@ -8,6 +9,7 @@ import 'package:flutter/material.dart';
 class AuthController extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   // Which form is currently shown
   bool isLogin = true;
@@ -245,9 +247,67 @@ class AuthController extends ChangeNotifier {
     }
   }
 
-  Future<void> continueWithGoogle() async {
-    // TODO: hook up Google sign-in
-    debugPrint('Continue with Google tapped');
+  // ---- Google sign-in ----
+
+  /// Returns true on success (including the "already had an account,
+  /// just signed in" case). Returns false if the user cancelled the
+  /// account picker or something went wrong — [errorMessage] is set
+  /// in the latter case. [isAdminLogin] is set the same way [login]
+  /// sets it, so AuthScreen knows where to navigate.
+  Future<bool> continueWithGoogle() async {
+    isLoading = true;
+    errorMessage = null;
+    notifyListeners();
+
+    try {
+      final googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) {
+        // User dismissed the account picker — not an error.
+        isLoading = false;
+        notifyListeners();
+        return false;
+      }
+
+      final googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final userCredential = await _auth.signInWithCredential(credential);
+      final user = userCredential.user!;
+
+      // First-time Google sign-in needs the same users/{uid} profile
+      // doc that email/password signup creates.
+      final userDocRef = _firestore.collection('users').doc(user.uid);
+      final existingDoc = await userDocRef.get();
+      if (!existingDoc.exists) {
+        final fallbackUsername = user.email?.split('@').first ?? 'Student';
+        await userDocRef.set({
+          'username': user.displayName ?? fallbackUsername,
+          'email': user.email ?? '',
+          'createdAt': FieldValue.serverTimestamp(),
+          'points': 0,
+        });
+      }
+
+      isAdminLogin = await _checkIsAdmin(user.uid);
+
+      isLoading = false;
+      notifyListeners();
+      return true;
+    } on FirebaseAuthException catch (e) {
+      errorMessage = _mapAuthError(e);
+      isLoading = false;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      debugPrint('AuthController: Google sign-in failed: $e');
+      errorMessage = 'Google sign-in failed. Please try again.';
+      isLoading = false;
+      notifyListeners();
+      return false;
+    }
   }
 
   String _mapAuthError(FirebaseAuthException e) {
@@ -268,6 +328,9 @@ class AuthController extends ChangeNotifier {
         return 'Too many attempts. Please try again later.';
       case 'network-request-failed':
         return 'No internet connection. Please check your network.';
+      case 'account-exists-with-different-credential':
+        return 'An account already exists with this email using a '
+            'different sign-in method.';
       default:
         return e.message ?? 'Authentication failed. Please try again.';
     }

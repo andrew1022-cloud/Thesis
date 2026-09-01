@@ -18,6 +18,7 @@ dependencies:
   firebase_database: ^12.4.6
   firebase_messaging: ^16.4.3
   firebase_analytics: ^12.4.5
+  google_sign_in: ^6.2.2
   sqflite: ^2.3.0
   path: ^1.9.0
   intl: ^0.19.0
@@ -26,23 +27,16 @@ dependencies:
   docx_to_text: ^1.0.1
   syncfusion_flutter_pdf: ^33.2.13
   flutter_local_notifications: ^18.0.1
-  flutter_timezone: ^4.1.0
+  flutter_timezone: ^1.0.8
   timezone: ^0.9.4
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
-  flutter_launcher_icons: ^0.14.3
 
 flutter:
   uses-material-design: true
 
   assets:
     - assets/images/logo.png
-
-flutter_launcher_icons:
-  android: true
-  ios: true
-  image_path: "assets/images/logo.png"
-  min_sdk_android: 21

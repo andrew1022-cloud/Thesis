@@ -66,6 +66,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '1097403188692',
     projectId: 'reveduc-5a5b9',
     storageBucket: 'reveduc-5a5b9.firebasestorage.app',
+    iosClientId: '1097403188692-0e22hs2heoktssn0q532arj9e5uslm4v.apps.googleusercontent.com',
     iosBundleId: 'com.reveduc.app',
   );
 

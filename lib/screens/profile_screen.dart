@@ -11,6 +11,7 @@ import '../widgets/profile_widgets.dart';
 import 'analytics_screen.dart';
 import 'home_screen.dart';
 import 'subject_screen.dart';
+import 'notes_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -101,9 +102,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   // ── Dev-only: verify the inactivity-reminder notification pipeline ─────
-  // Fires 10 seconds after tapping, so you can confirm permissions,
-  // the notification channel, and appearance without waiting days for
-  // a real "you've been away" reminder to trigger.
+  // Fires immediately on tap, so you can confirm permissions, the
+  // notification channel, and the branded styling without waiting
+  // days for a real "you've been away" reminder to trigger.
   Future<void> _testNotification() async {
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -111,7 +112,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) {
         messenger.showSnackBar(
           const SnackBar(
-              content: Text('Test notification scheduled — check in 10s 🔔')),
+              content: Text('Test notification sent — check your tray 🔔')),
         );
       }
     } catch (e) {
@@ -259,6 +260,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
 
+          const SizedBox(height: 16),
+          ProfileMenuButton(
+            icon: Icons.edit_note_rounded,
+            label: 'My Notes',
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const NotesScreen()),
+              );
+            },
+          ),
           // ── 4. Dev-only: seed / clear temporary test data, notif test ──────
           // Hidden automatically in release builds via kDebugMode.
           if (kDebugMode) ...[
@@ -286,7 +297,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 16),
             ProfileMenuButton(
               icon: Icons.notifications_active_rounded,
-              label: 'Test Notification (10s)',
+              label: 'Test Notification',
               onTap: _testNotification,
             ),
           ],

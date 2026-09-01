@@ -10,6 +10,8 @@ import 'home_screen.dart';
 import 'lesson_screen.dart';
 import 'profile_screen.dart';
 import 'quiz_screen.dart';
+import 'notes_screen.dart';
+
 
 /// Shown when a subject is tapped from the Subjects screen. Displays
 /// that subject's lessons ("competencies") with completion status,
@@ -265,6 +267,21 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
                   },
           ),
           const SizedBox(height: 20),
+
+          const SizedBox(height: 12),
+          ExamActionButton(
+            label: 'My Notes',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => NotesScreen(
+                    subjectId: widget.subjectId,
+                    subjectName: subject['name'] as String,
+                  ),
+                ),
+              );
+            },
+          ),
         ],
       ),
     );
