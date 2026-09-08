@@ -13,13 +13,12 @@ import 'notes_db_service.dart';
 /// instantly and offline.
 ///
 /// Reviewer content (subjects/lessons/quiz) is shared across all
-/// users. Everything else here — quiz attempts, bookmarks, lesson
-/// progress, and the daily-use log that drives the streak — is
-/// per-account: tagged with the Firebase Auth uid, mirrored up to
-/// Firestore as it's created, and pulled back down on a fresh
-/// install / new device via [syncUserDataFromFirestore]. Pass the
-/// current uid into every per-account method — this service doesn't
-/// read FirebaseAuth itself.
+/// users. Everything else here — quiz attempts, lesson progress, and
+/// the daily-use log that drives the streak — is per-account: tagged
+/// with the Firebase Auth uid, mirrored up to Firestore as it's
+/// created, and pulled back down on a fresh install / new device via
+/// [syncUserDataFromFirestore]. Pass the current uid into every
+/// per-account method — this service doesn't read FirebaseAuth itself.
 ///
 /// Add to pubspec.yaml:
 ///   dependencies:
@@ -44,9 +43,6 @@ import 'notes_db_service.dart';
 ///     - subjectId, lessonId, score, totalItems, quizType, dateTaken
 ///     - quizType: 'competency' | 'lesson' | 'subject'
 ///
-///   users/{uid}/bookmarks/{questionId}     (doc id == questionId)
-///     - dateBookmarked
-///
 ///   users/{uid}/lessonProgress/{lessonId}  (doc id == lessonId)
 ///     - subjectId, isCompleted, lastOpenedAt, completedAt
 ///
@@ -61,13 +57,12 @@ class LocalDbService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   static const String _dbName = 'reveduc_local.db';
-  static const int _dbVersion = 3;
+  static const int _dbVersion = 4;
 
   static const String tableSubjects = 'subjects';
   static const String tableLessons = 'lessons';
   static const String tableQuizQuestions = 'quiz_questions';
   static const String tableQuizAttempts = 'quiz_attempts';
-  static const String tableBookmarks = 'bookmarks';
   static const String tableLessonProgress = 'user_lesson_progress';
   static const String tableAppUsage = 'app_usage_log';
 
@@ -148,17 +143,6 @@ class LocalDbService {
         ''');
 
         await db.execute('''
-          CREATE TABLE $tableBookmarks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            userId TEXT NOT NULL,
-            questionId TEXT NOT NULL,
-            dateBookmarked TEXT NOT NULL,
-            synced INTEGER NOT NULL DEFAULT 0,
-            UNIQUE (userId, questionId)
-          )
-        ''');
-
-        await db.execute('''
           CREATE TABLE $tableLessonProgress (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             userId TEXT NOT NULL,
@@ -190,10 +174,6 @@ class LocalDbService {
               'ALTER TABLE $tableQuizAttempts ADD COLUMN firestoreId TEXT');
           await db.execute(
               'ALTER TABLE $tableQuizAttempts ADD COLUMN synced INTEGER NOT NULL DEFAULT 0');
-          await db.execute(
-              'ALTER TABLE $tableBookmarks ADD COLUMN userId TEXT NOT NULL DEFAULT ""');
-          await db.execute(
-              'ALTER TABLE $tableBookmarks ADD COLUMN synced INTEGER NOT NULL DEFAULT 0');
         }
         if (oldVersion < 3) {
           await db.execute(
@@ -203,7 +183,7 @@ class LocalDbService {
           await db.execute(
               'ALTER TABLE $tableQuizAttempts ADD COLUMN quizType TEXT');
           await db.execute('''
-            CREATE TABLE $tableLessonProgress (
+            CREATE TABLE IF NOT EXISTS $tableLessonProgress (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               userId TEXT NOT NULL,
               subjectId TEXT NOT NULL,
@@ -216,7 +196,7 @@ class LocalDbService {
             )
           ''');
           await db.execute('''
-            CREATE TABLE $tableAppUsage (
+            CREATE TABLE IF NOT EXISTS $tableAppUsage (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               userId TEXT NOT NULL,
               dateString TEXT NOT NULL,
@@ -224,6 +204,10 @@ class LocalDbService {
               UNIQUE (userId, dateString)
             )
           ''');
+        }
+        if (oldVersion < 4) {
+          // Drop bookmarks table if it exists from a previous version.
+          await db.execute('DROP TABLE IF EXISTS bookmarks');
         }
       },
     );
@@ -369,7 +353,6 @@ class LocalDbService {
   }
 
   /// A single subject row by id, or null if it isn't cached locally.
-  /// Used by the Subject Detail screen.
   Future<Map<String, dynamic>?> getSubjectById(String subjectId) async {
     final db = await database;
     final rows = await db.query(
@@ -413,9 +396,7 @@ class LocalDbService {
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
-  /// All quiz questions across every lesson in [subjectId], combined —
-  /// used to build the "Take a Subject Quiz" flow (as opposed to a
-  /// single lesson's competency quiz).
+  /// All quiz questions across every lesson in [subjectId], combined.
   Future<List<Map<String, dynamic>>> getQuizQuestionsForSubject(
       String subjectId) async {
     final lessons = await getLessons(subjectId);
@@ -441,9 +422,6 @@ class LocalDbService {
   // QUIZ ATTEMPTS — per account, mirrored to Firestore
   // =================================================================
 
-  /// [quizType] should be one of 'competency', 'lesson', 'subject' —
-  /// used only for record-keeping; the Home dashboard's average score
-  /// blends all types together.
   Future<int> insertQuizAttempt({
     required String uid,
     String? subjectId,
@@ -519,9 +497,7 @@ class LocalDbService {
     );
   }
 
-  /// Average score across every quiz attempt (competency, lesson, and
-  /// subject quizzes combined), as a whole-number percentage. Returns
-  /// 0 if the user hasn't taken any quizzes yet.
+  /// Average score across every quiz attempt, as a whole-number percentage.
   Future<int> getAverageScorePercent(String uid) async {
     final db = await database;
     final rows = await db.query(
@@ -551,77 +527,9 @@ class LocalDbService {
   }
 
   // =================================================================
-  // BOOKMARKS — per account, mirrored to Firestore
-  // =================================================================
-
-  Future<bool> isBookmarked(String uid, String questionId) async {
-    final db = await database;
-    final rows = await db.query(
-      tableBookmarks,
-      where: 'userId = ? AND questionId = ?',
-      whereArgs: [uid, questionId],
-    );
-    return rows.isNotEmpty;
-  }
-
-  Future<bool> toggleBookmark(String uid, String questionId) async {
-    final db = await database;
-    final alreadyBookmarked = await isBookmarked(uid, questionId);
-    final bookmarkDoc = _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('bookmarks')
-        .doc(questionId);
-
-    if (alreadyBookmarked) {
-      await db.delete(
-        tableBookmarks,
-        where: 'userId = ? AND questionId = ?',
-        whereArgs: [uid, questionId],
-      );
-      try {
-        await bookmarkDoc.delete();
-      } catch (_) {}
-      return false;
-    } else {
-      final date = DateTime.now().toIso8601String();
-      await db.insert(tableBookmarks, {
-        'userId': uid,
-        'questionId': questionId,
-        'dateBookmarked': date,
-        'synced': 0,
-      });
-      try {
-        await bookmarkDoc.set({'dateBookmarked': date});
-        await db.update(
-          tableBookmarks,
-          {'synced': 1},
-          where: 'userId = ? AND questionId = ?',
-          whereArgs: [uid, questionId],
-        );
-      } catch (_) {}
-      return true;
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> getBookmarkedQuestions(
-      String uid) async {
-    final db = await database;
-    return db.rawQuery('''
-      SELECT q.*
-      FROM $tableQuizQuestions q
-      INNER JOIN $tableBookmarks b ON b.questionId = q.id
-      WHERE b.userId = ?
-      ORDER BY b.dateBookmarked DESC
-    ''', [uid]);
-  }
-
-  // =================================================================
   // LESSON PROGRESS — drives "Continue by Subject" + overall progress
   // =================================================================
 
-  /// Call this whenever the user opens a lesson. Marks it as the most
-  /// recently opened lesson for that subject (and overall).
   Future<void> recordLessonOpened({
     required String uid,
     required String subjectId,
@@ -673,7 +581,6 @@ class LocalDbService {
     }
   }
 
-  /// Call this when the user finishes a lesson (e.g. passes its quiz).
   Future<void> markLessonCompleted({
     required String uid,
     required String subjectId,
@@ -727,7 +634,6 @@ class LocalDbService {
     } catch (_) {}
   }
 
-  /// Number of lessons the user has completed across ALL subjects.
   Future<int> getCompletedLessonCount(String uid) async {
     final db = await database;
     final result = await db.rawQuery(
@@ -747,9 +653,6 @@ class LocalDbService {
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
-  /// The set of lessonIds within [subjectId] that [uid] has completed —
-  /// used by the Subject Detail screen to show a filled vs. outline
-  /// circle next to each lesson.
   Future<Set<String>> getCompletedLessonIdsForSubject(
       String uid, String subjectId) async {
     final db = await database;
@@ -762,9 +665,6 @@ class LocalDbService {
     return rows.map((r) => r['lessonId'] as String).toSet();
   }
 
-  /// Overall progress across GenEd + ProfEd + Specialization combined,
-  /// as a whole-number percentage of lessons completed vs. total
-  /// lessons that exist.
   Future<int> getOverallProgressPercent(String uid) async {
     final total = await getTotalLessonCount();
     if (total == 0) return 0;
@@ -779,9 +679,6 @@ class LocalDbService {
     return ((completed / total) * 100).round();
   }
 
-  /// For each subject, the last lesson the user opened (title + id),
-  /// plus that subject's completion percentage. Subjects with no
-  /// activity yet come back with a null lesson.
   Future<List<Map<String, dynamic>>> getContinueBySubject(String uid) async {
     final subjects = await getSubjects();
     final results = <Map<String, dynamic>>[];
@@ -814,8 +711,6 @@ class LocalDbService {
     return results;
   }
 
-  /// The single most recently opened lesson across every subject —
-  /// this is what powers the "Do you wish to continue?" card.
   Future<Map<String, dynamic>?> getLastOpenedLessonOverall(
       String uid) async {
     final db = await database;
@@ -847,9 +742,6 @@ class LocalDbService {
   // ANALYTICS — per-category progress and competency rankings
   // =================================================================
 
-  /// Progress across just the subjects tagged with [categoryCode]
-  /// ('GE', 'PE', 'SP', ...), as a whole-number percentage of lessons
-  /// completed vs. total lessons that exist in that category.
   Future<int> getCategoryProgressPercent(
       String uid, String categoryCode) async {
     final subjects = await getSubjects();
@@ -867,11 +759,6 @@ class LocalDbService {
     return ((completed / total) * 100).round();
   }
 
-  /// Every lesson ("competency") the user has taken at least one quiz
-  /// on, with their average score, ranked best-first. Feeds the
-  /// "Strongest Competency" / "Weakest Competency" lists on the
-  /// Analytics screen — take the first few for strongest and the
-  /// last few (reversed) for weakest.
   Future<List<Map<String, dynamic>>> getCompetencyRankings(
       String uid) async {
     final db = await database;
@@ -898,11 +785,9 @@ class LocalDbService {
   }
 
   // =================================================================
-  // LEADERBOARD — global ranking, lives on the users/{uid} doc in
-  // Firestore (a 'points' field, alongside username/email/createdAt).
+  // LEADERBOARD
   // =================================================================
 
-  /// Top [limit] users by points, ranked 1..limit.
   Future<List<Map<String, dynamic>>> getLeaderboardTop({int limit = 5}) async {
     final snapshot = await _firestore
         .collection('users')
@@ -921,8 +806,6 @@ class LocalDbService {
     ];
   }
 
-  /// This user's own points and rank (1-based) among all users, even
-  /// if they're outside the top of [getLeaderboardTop].
   Future<Map<String, dynamic>> getUserPointsAndRank(String uid) async {
     final doc = await _firestore.collection('users').doc(uid).get();
     final data = doc.data();
@@ -941,9 +824,6 @@ class LocalDbService {
     };
   }
 
-  /// Adds [delta] points to this user's leaderboard total. Call this
-  /// wherever points should be awarded (e.g. after a passed quiz) —
-  /// not wired up to anything yet.
   Future<void> incrementUserPoints(String uid, int delta) async {
     await _firestore.collection('users').doc(uid).set(
       {'points': FieldValue.increment(delta)},
@@ -962,8 +842,6 @@ class LocalDbService {
         '${now.day.toString().padLeft(2, '0')}';
   }
 
-  /// Call this once per app session (e.g. in the Home screen's
-  /// initState, or right after login) to log today as a used day.
   Future<void> recordAppOpenedToday(String uid) async {
     final db = await database;
     final today = _todayString();
@@ -993,9 +871,6 @@ class LocalDbService {
     }
   }
 
-  /// Consecutive days used, counting back from today. If the app
-  /// hasn't been opened yet today, the streak still counts as long as
-  /// yesterday was used (today just hasn't broken it yet).
   Future<int> getDayStreak(String uid) async {
     final db = await database;
     final rows = await db.query(
@@ -1014,8 +889,6 @@ class LocalDbService {
         '${cursor.month.toString().padLeft(2, '0')}-'
         '${cursor.day.toString().padLeft(2, '0')}';
 
-    // If today isn't logged yet, start checking from yesterday instead
-    // (today not having a record yet shouldn't zero out the streak).
     if (!usedDates.contains(cursorString())) {
       cursor = cursor.subtract(const Duration(days: 1));
     }
@@ -1029,13 +902,9 @@ class LocalDbService {
   }
 
   // =================================================================
-  // ACCOUNT SYNC — call after login and whenever reconnecting
+  // ACCOUNT SYNC
   // =================================================================
 
-  /// Pulls this user's quiz attempts, bookmarks, lesson progress, and
-  /// usage log down from Firestore into the local cache. Call this
-  /// right after login — it's what restores progress on a fresh
-  /// install or new device.
   Future<void> syncUserDataFromFirestore(String uid) async {
     await NotesDbService.instance.syncFromFirestore(uid);
     final db = await database;
@@ -1065,26 +934,6 @@ class LocalDbService {
         'firestoreId': doc.id,
         'synced': 1,
       });
-    }
-
-    final bookmarksSnapshot = await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('bookmarks')
-        .get();
-    for (final doc in bookmarksSnapshot.docs) {
-      final data = doc.data();
-      await db.insert(
-        tableBookmarks,
-        {
-          'userId': uid,
-          'questionId': doc.id,
-          'dateBookmarked':
-              data['dateBookmarked'] ?? DateTime.now().toIso8601String(),
-          'synced': 1,
-        },
-        conflictAlgorithm: ConflictAlgorithm.ignore,
-      );
     }
 
     final progressSnapshot = await _firestore
@@ -1132,12 +981,8 @@ class LocalDbService {
         conflictAlgorithm: ConflictAlgorithm.ignore,
       );
     }
-
   }
 
-  /// Retries pushing any local rows that couldn't reach Firestore
-  /// earlier (e.g. created while offline). Call opportunistically —
-  /// e.g. when connectivity is restored, or on app resume.
   Future<void> pushPendingSyncs(String uid) async {
     final db = await database;
 
@@ -1163,28 +1008,6 @@ class LocalDbService {
         await db.update(
           tableQuizAttempts,
           {'firestoreId': docRef.id, 'synced': 1},
-          where: 'id = ?',
-          whereArgs: [row['id']],
-        );
-      } catch (_) {}
-    }
-
-    final pendingBookmarks = await db.query(
-      tableBookmarks,
-      where: 'userId = ? AND synced = 0',
-      whereArgs: [uid],
-    );
-    for (final row in pendingBookmarks) {
-      try {
-        await _firestore
-            .collection('users')
-            .doc(uid)
-            .collection('bookmarks')
-            .doc(row['questionId'] as String)
-            .set({'dateBookmarked': row['dateBookmarked']});
-        await db.update(
-          tableBookmarks,
-          {'synced': 1},
           where: 'id = ?',
           whereArgs: [row['id']],
         );
@@ -1246,13 +1069,10 @@ class LocalDbService {
   // MAINTENANCE
   // =================================================================
 
-  /// Wipes cached reviewer content plus all local per-account rows for
-  /// every user. Does not touch Firestore.
   Future<void> clearAllData() async {
     final db = await database;
     await db.delete(tableAppUsage);
     await db.delete(tableLessonProgress);
-    await db.delete(tableBookmarks);
     await db.delete(tableQuizAttempts);
     await db.delete(tableQuizQuestions);
     await db.delete(tableLessons);
