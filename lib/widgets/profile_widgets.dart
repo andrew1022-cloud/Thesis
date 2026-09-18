@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../controllers/profile_controller.dart';
 import 'home_widgets.dart'
-    show kMaroon, kGold, kLabelBlue, kCream, labelColorFor, primaryTextColor, secondaryTextColor;
+    show kMaroon, kGold, labelColorFor, primaryTextColor, secondaryTextColor;
 
 // ── User info row (avatar + username + email) ─────────────────────────────────
 
@@ -258,7 +258,7 @@ class _BadgeIcon extends StatelessWidget {
       width: 56,
       height: 56,
       decoration: BoxDecoration(
-        color: kGold.withOpacity(0.2),
+        color: kGold.withValues(alpha: 0.2),
         shape: BoxShape.circle,
         border: Border.all(color: kGold, width: 2),
       ),
