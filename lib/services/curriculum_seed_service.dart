@@ -10,6 +10,14 @@ import '../data/curriculum_data.dart';
 ///   subjects/{id}                — name, code, colorHex, order
 ///   subjects/{id}/lessons/{id}   — title, content, order
 ///
+/// Doc ids and the subject "order" field come from the shared
+/// `curriculumSubjectId` / `curriculumLessonId` /
+/// `curriculumGlobalSubjectOrder` helpers in `curriculum_data.dart` —
+/// the same ones `ContentController` uses when an admin publishes a
+/// lesson or assessment straight from the Contents tab. That keeps
+/// both flows writing to the exact same docs whether or not this
+/// seeder has ever been run.
+///
 /// This makes `kFixedCurriculum` the single source of truth for
 /// subjects and competencies. Call [resetAndSeedFixedCurriculum] once
 /// (e.g. from the dev-only button on the Profile screen), then run
@@ -28,8 +36,6 @@ class CurriculumSeedService {
       CurriculumSeedService._internal();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  String _pad(int index) => index.toString().padLeft(2, '0');
 
   Future<void> resetAndSeedFixedCurriculum() async {
     await _clearExistingSubjects();
@@ -61,13 +67,12 @@ class CurriculumSeedService {
 
   Future<void> _seedFixedCurriculum() async {
     final now = FieldValue.serverTimestamp();
-    var globalOrder = 0;
     var subjectCount = 0;
 
     for (final category in kFixedCurriculum) {
       for (var s = 0; s < category.subjects.length; s++) {
         final subject = category.subjects[s];
-        final subjectId = '${category.code.toLowerCase()}_${_pad(s + 1)}';
+        final subjectId = curriculumSubjectId(category.code, s);
 
         await _firestore.collection('subjects').doc(subjectId).set({
           'name': subject.name,
@@ -77,10 +82,9 @@ class CurriculumSeedService {
           // kSubjectFallbackColors[code] when colorHex is empty, which
           // already matches GE/PE/SP everywhere else in the app.
           'colorHex': '',
-          'order': globalOrder,
+          'order': curriculumGlobalSubjectOrder(subjectId),
           'updatedAt': now,
         });
-        globalOrder++;
         subjectCount++;
 
         final lessonsCollection = _firestore
@@ -91,7 +95,7 @@ class CurriculumSeedService {
 
         for (var c = 0; c < subject.competencies.length; c++) {
           final competency = subject.competencies[c];
-          final lessonId = '${subjectId}_c${_pad(c + 1)}';
+          final lessonId = curriculumLessonId(subjectId, c);
           batch.set(lessonsCollection.doc(lessonId), {
             'title': competency.title,
             'content': '',

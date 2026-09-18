@@ -322,3 +322,43 @@ const List<CurriculumCategory> kFixedCurriculum = [
     ],
   ),
 ];
+
+// =================================================================
+// DETERMINISTIC IDS
+// =================================================================
+//
+// Both the admin "Contents" publishing flow (ContentController) and
+// the dev-only curriculum seeder (CurriculumSeedService) need the
+// exact same Firestore doc ids for a given (category, subject index)
+// and (subject, competency index) pair — otherwise publishing a
+// lesson from the admin form could write to a different doc than the
+// one the seeder created (or vice versa). These three helpers are the
+// single source of truth for that scheme.
+
+String _curriculumPad(int oneBasedIndex) =>
+    oneBasedIndex.toString().padLeft(2, '0');
+
+/// Deterministic `subjects/{id}` doc id for the [index]-th (0-based)
+/// subject under the category with [categoryCode].
+String curriculumSubjectId(String categoryCode, int index) =>
+    '${categoryCode.toLowerCase()}_${_curriculumPad(index + 1)}';
+
+/// Deterministic `subjects/{subjectId}/lessons/{id}` doc id for the
+/// [index]-th (0-based) competency under [subjectId].
+String curriculumLessonId(String subjectId, int index) =>
+    '${subjectId}_c${_curriculumPad(index + 1)}';
+
+/// The running "order" index (0-based) a subject should be written
+/// with, counting across every category in [kFixedCurriculum] in
+/// order — matches the "order" field subjects are sorted by
+/// everywhere else in the app (SubjectScreen, LocalDbService, ...).
+int curriculumGlobalSubjectOrder(String subjectId) {
+  var order = 0;
+  for (final category in kFixedCurriculum) {
+    for (var i = 0; i < category.subjects.length; i++) {
+      if (curriculumSubjectId(category.code, i) == subjectId) return order;
+      order++;
+    }
+  }
+  return 0;
+}

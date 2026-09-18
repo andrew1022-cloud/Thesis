@@ -188,8 +188,9 @@ class UploadDropzone extends StatelessWidget {
   }
 }
 
-/// Bordered, labeled dropdown field (Category / Subject), styled the
-/// same way as the role dropdown in AddAdminDialog.
+/// Bordered, labeled dropdown field — used for Category / Subject /
+/// Competency, all styled the same way as the role dropdown in
+/// AddAdminDialog.
 class ContentDropdownField<T> extends StatelessWidget {
   final String label;
   final T? value;
@@ -237,110 +238,6 @@ class ContentDropdownField<T> extends StatelessWidget {
               dropdownColor: Theme.of(context).cardColor,
               items: items,
               onChanged: onChanged,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Competency picker: a dropdown to jump to an existing competency
-/// (to edit its content/quiz) or "+ Add New Competency", plus a text
-/// field the admin types/edits the actual competency name in. Typing
-/// a brand-new name here is what creates a new lesson doc on publish
-/// — which is also what makes it show up under the subject on the
-/// user-facing Subject Detail screen.
-class CompetencyField extends StatelessWidget {
-  final List<Map<String, dynamic>> existingLessons;
-  final String? selectedLessonId;
-  final ValueChanged<String?> onSelect;
-  final TextEditingController textController;
-  final bool enabled;
-
-  const CompetencyField({
-    super.key,
-    required this.existingLessons,
-    required this.selectedLessonId,
-    required this.onSelect,
-    required this.textController,
-    required this.enabled,
-  });
-
-  static const String _addNewValue = '__add_new__';
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Competency',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: primaryTextColor(context),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Theme.of(context).dividerColor),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: selectedLessonId ?? _addNewValue,
-              isExpanded: true,
-              icon: Icon(Icons.expand_more_rounded, color: labelColorFor(context)),
-              style: TextStyle(fontSize: 14, color: primaryTextColor(context)),
-              dropdownColor: Theme.of(context).cardColor,
-              items: [
-                ...existingLessons.map((l) => DropdownMenuItem(
-                      value: l['id'] as String,
-                      child: Text(
-                        (l['title'] as String?) ?? '',
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    )),
-                const DropdownMenuItem(
-                  value: _addNewValue,
-                  child: Text(
-                    '+ Add New Competency',
-                    style: TextStyle(fontWeight: FontWeight.w700, color: kMaroon),
-                  ),
-                ),
-              ],
-              onChanged: !enabled
-                  ? null
-                  : (value) => onSelect(value == _addNewValue ? null : value),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: textController,
-          enabled: enabled,
-          maxLines: 2,
-          minLines: 1,
-          style: TextStyle(fontSize: 14, color: primaryTextColor(context)),
-          decoration: InputDecoration(
-            hintText: selectedLessonId == null
-                ? 'Type the new competency name'
-                : 'Edit competency name',
-            hintStyle: TextStyle(fontSize: 12, color: secondaryTextColor(context)),
-            filled: true,
-            fillColor: Theme.of(context).cardColor,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Theme.of(context).dividerColor),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Theme.of(context).dividerColor),
             ),
           ),
         ),

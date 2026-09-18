@@ -203,10 +203,22 @@ class _ContentScreenState extends State<ContentScreen> {
         .map((c) => DropdownMenuItem(value: c.code, child: Text(c.label)))
         .toList();
 
+    // Only the selected category's subjects ever appear here — e.g.
+    // picking "General Education" only offers GenEd subjects.
     final subjectItems = _controller.subjectsForSelectedCategory
-        .map((s) => DropdownMenuItem(
-              value: s['id'] as String,
-              child: Text((s['name'] as String?) ?? ''),
+        .map((e) => DropdownMenuItem(
+              value: e.key,
+              child: Text(e.value.name, overflow: TextOverflow.ellipsis),
+            ))
+        .toList();
+
+    // Only the selected subject's competencies ever appear here — e.g.
+    // picking "Purposive Communication in English" only offers that
+    // subject's own competencies.
+    final competencyItems = _controller.competenciesForSelectedSubject
+        .map((e) => DropdownMenuItem(
+              value: e.key,
+              child: Text(e.value.title, overflow: TextOverflow.ellipsis),
             ))
         .toList();
 
@@ -263,12 +275,18 @@ class _ContentScreenState extends State<ContentScreen> {
         ),
         const SizedBox(height: 14),
 
-        CompetencyField(
-          existingLessons: _controller.lessonsForSelectedSubject,
-          selectedLessonId: _controller.selectedCompetencyLessonId,
-          onSelect: _controller.selectCompetency,
-          textController: _controller.competencyController,
-          enabled: _controller.selectedSubjectId != null,
+        ContentDropdownField<String>(
+          label: 'Competency',
+          hint: _controller.selectedSubjectId == null
+              ? 'Select a subject first'
+              : 'Select competency',
+          value: _controller.selectedCompetencyLessonId,
+          items: competencyItems,
+          onChanged: _controller.selectedSubjectId == null
+              ? null
+              : (v) {
+                  if (v != null) _controller.selectCompetency(v);
+                },
         ),
 
         if (_controller.formError != null) ...[

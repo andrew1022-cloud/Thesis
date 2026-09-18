@@ -7,6 +7,16 @@
 // Legacy binary .doc files are accepted (extension-wise) but aren't
 // safely parseable client-side, so their lesson content stays blank
 // until edited directly — everything else about publishing still works.
+//
+// Category → Subject → Competency are driven entirely by the fixed
+// curriculum in `data/curriculum_data.dart` (kFixedCurriculum), not by
+// whatever happens to already be sitting in Firestore. Picking a
+// category only ever offers that category's subjects; picking a
+// subject only ever offers that subject's competencies. subjectId /
+// lessonId are derived deterministically (see curriculumSubjectId /
+// curriculumLessonId) so publishing always writes to the same doc a
+// given competency would use, whether or not "Seed Fixed Curriculum"
+// has been run first.
 
 import 'dart:convert';
 
@@ -16,6 +26,8 @@ import 'package:docx_to_text/docx_to_text.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
+
+import '../data/curriculum_data.dart';
 
 /// Which sub-tab of the Contents screen is active.
 enum ContentTab { lessons, assessment }
@@ -27,8 +39,7 @@ class ContentCategory {
   const ContentCategory(this.code, this.label);
 }
 
-/// Fixed category list — mirrors the `code` values already used on
-/// subject docs ('GE' / 'PE' / 'SP') elsewhere in the app.
+/// Fixed category list — mirrors kFixedCurriculum's own categories.
 const List<ContentCategory> kContentCategories = [
   ContentCategory('GE', 'General Education'),
   ContentCategory('PE', 'Professional Education'),
@@ -62,12 +73,6 @@ class ExistingContentItem {
 class ContentController extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  static const Map<String, String> categoryLabels = {
-    'GE': 'General Education',
-    'PE': 'Professional Education',
-    'SP': 'Specialization',
-  };
-
   ContentTab activeTab = ContentTab.lessons;
 
   bool isLoading = true;
@@ -78,37 +83,71 @@ class ContentController extends ChangeNotifier {
   // ---- form state ----
   String? selectedCategoryCode;
   String? selectedSubjectId;
-  String? selectedCompetencyLessonId; // null = brand-new competency
-  final TextEditingController competencyController = TextEditingController();
+  String? selectedCompetencyLessonId;
 
   PlatformFile? pickedFile;
   String? _extractedText;
 
   // ---- data ----
-  List<Map<String, dynamic>> _allSubjects = [];
-
-  List<Map<String, dynamic>> get subjectsForSelectedCategory =>
-      selectedCategoryCode == null
-          ? []
-          : _allSubjects
-              .where((s) => (s['code'] as String?) == selectedCategoryCode)
-              .toList();
-
-  List<Map<String, dynamic>> _lessonsForSelectedSubject = [];
-  List<Map<String, dynamic>> get lessonsForSelectedSubject =>
-      _lessonsForSelectedSubject;
-
   List<ExistingContentItem> existingLessons = [];
   List<ExistingContentItem> existingAssessments = [];
+
+  // =================================================================
+  // CURRICULUM-DRIVEN DROPDOWN DATA
+  // =================================================================
+
+  CurriculumCategory? _categoryByCode(String code) {
+    for (final c in kFixedCurriculum) {
+      if (c.code == code) return c;
+    }
+    return null;
+  }
+
+  CurriculumCategory? get _selectedCategory => selectedCategoryCode == null
+      ? null
+      : _categoryByCode(selectedCategoryCode!);
+
+  /// (subjectId, subject) pairs for the selected category only — e.g.
+  /// picking "General Education" only ever offers GenEd subjects.
+  List<MapEntry<String, CurriculumSubject>> get subjectsForSelectedCategory {
+    final category = _selectedCategory;
+    if (category == null) return [];
+    return [
+      for (var i = 0; i < category.subjects.length; i++)
+        MapEntry(curriculumSubjectId(category.code, i), category.subjects[i]),
+    ];
+  }
+
+  CurriculumSubject? get _selectedSubject {
+    if (selectedSubjectId == null) return null;
+    for (final entry in subjectsForSelectedCategory) {
+      if (entry.key == selectedSubjectId) return entry.value;
+    }
+    return null;
+  }
+
+  /// (lessonId, competency) pairs for the selected subject only — e.g.
+  /// picking "Purposive Communication in English" only ever offers
+  /// that subject's own competencies.
+  List<MapEntry<String, CurriculumCompetency>>
+      get competenciesForSelectedSubject {
+    final subject = _selectedSubject;
+    if (subject == null || selectedSubjectId == null) return [];
+    return [
+      for (var i = 0; i < subject.competencies.length; i++)
+        MapEntry(
+          curriculumLessonId(selectedSubjectId!, i),
+          subject.competencies[i],
+        ),
+    ];
+  }
+
+  int _competencyIndexFor(String lessonId) =>
+      competenciesForSelectedSubject.indexWhere((e) => e.key == lessonId);
 
   Future<void> init() async {
     isLoading = true;
     notifyListeners();
-
-    final subjectsSnap =
-        await _firestore.collection('subjects').orderBy('order').get();
-    _allSubjects =
-        subjectsSnap.docs.map((d) => {'id': d.id, ...d.data()}).toList();
 
     await _loadExistingContent();
 
@@ -116,59 +155,65 @@ class ContentController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Scans every lesson/quiz doc that belongs to the fixed curriculum
+  /// (matched by the same deterministic ids `publish()` writes to) and
+  /// lists only the ones that actually have something published.
   Future<void> _loadExistingContent() async {
+    final lessonsSnap = await _firestore.collectionGroup('lessons').get();
+    final lessonDataById = <String, Map<String, dynamic>>{
+      for (final doc in lessonsSnap.docs) doc.id: doc.data(),
+    };
+
+    final quizSnap = await _firestore.collectionGroup('quiz').get();
+    final quizCountByLesson = <String, int>{};
+    for (final doc in quizSnap.docs) {
+      final lessonId = doc.reference.parent.parent?.id;
+      if (lessonId == null) continue;
+      quizCountByLesson[lessonId] = (quizCountByLesson[lessonId] ?? 0) + 1;
+    }
+
     final lessons = <ExistingContentItem>[];
     final assessments = <ExistingContentItem>[];
 
-    for (final subject in _allSubjects) {
-      final subjectId = subject['id'] as String;
-      final code = (subject['code'] as String?) ?? '';
-      final categoryLabel = categoryLabels[code] ?? code;
+    for (final category in kFixedCurriculum) {
+      for (var s = 0; s < category.subjects.length; s++) {
+        final subject = category.subjects[s];
+        final subjectId = curriculumSubjectId(category.code, s);
 
-      final lessonsSnap = await _firestore
-          .collection('subjects')
-          .doc(subjectId)
-          .collection('lessons')
-          .orderBy('order')
-          .get();
+        for (var c = 0; c < subject.competencies.length; c++) {
+          final competency = subject.competencies[c];
+          final lessonId = curriculumLessonId(subjectId, c);
 
-      for (final lessonDoc in lessonsSnap.docs) {
-        final data = lessonDoc.data();
-        final content = (data['content'] as String?) ?? '';
+          final data = lessonDataById[lessonId];
+          final content = (data?['content'] as String?) ?? '';
+          if (data != null && content.trim().isNotEmpty) {
+            lessons.add(ExistingContentItem(
+              subjectId: subjectId,
+              lessonId: lessonId,
+              competencyTitle: competency.title,
+              subjectName: subject.name,
+              categoryLabel: category.label,
+              estimatedMinutes: _estimateReadMinutes(content),
+            ));
+          }
 
-        lessons.add(ExistingContentItem(
-          subjectId: subjectId,
-          lessonId: lessonDoc.id,
-          competencyTitle: (data['title'] as String?) ?? '',
-          subjectName: (subject['name'] as String?) ?? '',
-          categoryLabel: categoryLabel,
-          estimatedMinutes: _estimateReadMinutes(content),
-        ));
-
-        final quizSnap = await _firestore
-            .collection('subjects')
-            .doc(subjectId)
-            .collection('lessons')
-            .doc(lessonDoc.id)
-            .collection('quiz')
-            .get();
-
-        if (quizSnap.docs.isNotEmpty) {
-          assessments.add(ExistingContentItem(
-            subjectId: subjectId,
-            lessonId: lessonDoc.id,
-            competencyTitle: (data['title'] as String?) ?? '',
-            subjectName: (subject['name'] as String?) ?? '',
-            categoryLabel: categoryLabel,
-            questionCount: quizSnap.docs.length,
-          ));
+          final quizCount = quizCountByLesson[lessonId] ?? 0;
+          if (quizCount > 0) {
+            assessments.add(ExistingContentItem(
+              subjectId: subjectId,
+              lessonId: lessonId,
+              competencyTitle: competency.title,
+              subjectName: subject.name,
+              categoryLabel: category.label,
+              questionCount: quizCount,
+            ));
+          }
         }
       }
     }
 
-    // Most-recently-added first, matching the mockup's list ordering.
-    existingLessons = lessons.reversed.toList();
-    existingAssessments = assessments.reversed.toList();
+    existingLessons = lessons;
+    existingAssessments = assessments;
   }
 
   int _estimateReadMinutes(String content) {
@@ -191,10 +236,8 @@ class ContentController extends ChangeNotifier {
     selectedCategoryCode = null;
     selectedSubjectId = null;
     selectedCompetencyLessonId = null;
-    competencyController.clear();
     pickedFile = null;
     _extractedText = null;
-    _lessonsForSelectedSubject = [];
     formError = null;
     successMessage = null;
   }
@@ -203,42 +246,21 @@ class ContentController extends ChangeNotifier {
     selectedCategoryCode = code;
     selectedSubjectId = null;
     selectedCompetencyLessonId = null;
-    competencyController.clear();
-    _lessonsForSelectedSubject = [];
+    pickedFile = null;
+    _extractedText = null;
     notifyListeners();
   }
 
-  Future<void> selectSubject(String subjectId) async {
+  void selectSubject(String subjectId) {
     selectedSubjectId = subjectId;
     selectedCompetencyLessonId = null;
-    competencyController.clear();
-    notifyListeners();
-
-    final snap = await _firestore
-        .collection('subjects')
-        .doc(subjectId)
-        .collection('lessons')
-        .orderBy('order')
-        .get();
-    _lessonsForSelectedSubject =
-        snap.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+    pickedFile = null;
+    _extractedText = null;
     notifyListeners();
   }
 
-  /// [lessonId] null means "brand-new competency" — clears the text
-  /// field for typing. Otherwise prefills it with that lesson's
-  /// current title so the admin can also rename it here.
-  void selectCompetency(String? lessonId) {
+  void selectCompetency(String lessonId) {
     selectedCompetencyLessonId = lessonId;
-    if (lessonId == null) {
-      competencyController.clear();
-    } else {
-      final lesson = _lessonsForSelectedSubject.firstWhere(
-        (l) => l['id'] == lessonId,
-        orElse: () => const {},
-      );
-      competencyController.text = (lesson['title'] as String?) ?? '';
-    }
     notifyListeners();
   }
 
@@ -321,8 +343,8 @@ class ContentController extends ChangeNotifier {
       notifyListeners();
       return false;
     }
-    if (competencyController.text.trim().isEmpty) {
-      formError = 'Please enter a competency.';
+    if (selectedCompetencyLessonId == null) {
+      formError = 'Please select a competency.';
       notifyListeners();
       return false;
     }
@@ -339,17 +361,17 @@ class ContentController extends ChangeNotifier {
 
     try {
       if (activeTab == ContentTab.lessons) {
-        await _ensureLessonDoc(isLessonTab: true);
+        await _publishLesson();
       } else {
         await _publishAssessment();
       }
 
-      successMessage =
-          activeTab == ContentTab.lessons ? 'Lesson published.' : 'Assessment published.';
+      successMessage = activeTab == ContentTab.lessons
+          ? 'Lesson published.'
+          : 'Assessment published.';
 
       await _loadExistingContent();
       selectedCompetencyLessonId = null;
-      competencyController.clear();
       pickedFile = null;
       _extractedText = null;
 
@@ -365,42 +387,66 @@ class ContentController extends ChangeNotifier {
     }
   }
 
-  /// Creates a new lesson doc for a brand-new competency, or updates
-  /// the title (and, for the Lessons tab, the content) of an existing
-  /// one. Returns the lesson id either way.
-  Future<String> _ensureLessonDoc({required bool isLessonTab}) async {
-    final subjectRef =
-        _firestore.collection('subjects').doc(selectedSubjectId);
-    final title = competencyController.text.trim();
-
-    if (selectedCompetencyLessonId != null) {
-      final data = <String, dynamic>{
-        'title': title,
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-      if (isLessonTab) data['content'] = (_extractedText ?? '').trim();
-
-      await subjectRef
-          .collection('lessons')
-          .doc(selectedCompetencyLessonId)
-          .set(data, SetOptions(merge: true));
-      return selectedCompetencyLessonId!;
-    }
-
-    // New competency → new lesson doc, appended after existing ones so
-    // it shows up right away in the user-facing Subject Detail screen.
-    final nextOrder = _lessonsForSelectedSubject.length;
-    final doc = await subjectRef.collection('lessons').add({
-      'title': title,
-      'content': isLessonTab ? (_extractedText ?? '').trim() : '',
-      'order': nextOrder,
+  /// Upserts the subject doc's own metadata (name/code/order) so the
+  /// subject shows up in the user-facing Subjects screen even if
+  /// "Seed Fixed Curriculum" was never run — publishing one
+  /// competency's content is enough on its own.
+  Future<void> _ensureSubjectDoc(String subjectId) async {
+    final category = _selectedCategory!;
+    final subject = _selectedSubject!;
+    await _firestore.collection('subjects').doc(subjectId).set({
+      'name': subject.name,
+      'description': '',
+      'code': category.code,
+      'colorHex': '',
+      'order': curriculumGlobalSubjectOrder(subjectId),
       'updatedAt': FieldValue.serverTimestamp(),
-    });
-    return doc.id;
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> _publishLesson() async {
+    final subjectId = selectedSubjectId!;
+    final lessonId = selectedCompetencyLessonId!;
+    final competencyIndex = _competencyIndexFor(lessonId);
+    final competency = competenciesForSelectedSubject[competencyIndex].value;
+
+    await _ensureSubjectDoc(subjectId);
+
+    await _firestore
+        .collection('subjects')
+        .doc(subjectId)
+        .collection('lessons')
+        .doc(lessonId)
+        .set({
+      'title': competency.title,
+      'content': (_extractedText ?? '').trim(),
+      'order': competencyIndex,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   Future<void> _publishAssessment() async {
-    final lessonId = await _ensureLessonDoc(isLessonTab: false);
+    final subjectId = selectedSubjectId!;
+    final lessonId = selectedCompetencyLessonId!;
+    final competencyIndex = _competencyIndexFor(lessonId);
+    final competency = competenciesForSelectedSubject[competencyIndex].value;
+
+    await _ensureSubjectDoc(subjectId);
+
+    // Merge only title/order here — don't touch 'content' so a lesson
+    // that already has published content keeps it when only its quiz
+    // is being (re)published.
+    await _firestore
+        .collection('subjects')
+        .doc(subjectId)
+        .collection('lessons')
+        .doc(lessonId)
+        .set({
+      'title': competency.title,
+      'order': competencyIndex,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
     final rows = await _parseCsv(pickedFile!);
     if (rows.isEmpty) {
       throw Exception('CSV had no valid question rows.');
@@ -408,7 +454,7 @@ class ContentController extends ChangeNotifier {
 
     final quizCollection = _firestore
         .collection('subjects')
-        .doc(selectedSubjectId)
+        .doc(subjectId)
         .collection('lessons')
         .doc(lessonId)
         .collection('quiz');
@@ -441,7 +487,8 @@ class ContentController extends ChangeNotifier {
     final rows = csv.decode(text); // `csv` is the package's default Csv() instance
     if (rows.length < 2) return [];
 
-    final header = rows.first.map((h) => h.toString().trim().toLowerCase()).toList();
+    final header =
+        rows.first.map((h) => h.toString().trim().toLowerCase()).toList();
     int col(String name) => header.indexOf(name.toLowerCase());
 
     final qCol = col('questionText');
@@ -468,16 +515,11 @@ class ContentController extends ChangeNotifier {
         'optionC': row[cCol].toString().trim(),
         'optionD': row[dCol].toString().trim(),
         'correctOption': row[correctCol].toString().trim().toUpperCase(),
-        'explanation':
-            (explCol == -1 || row.length <= explCol) ? '' : row[explCol].toString().trim(),
+        'explanation': (explCol == -1 || row.length <= explCol)
+            ? ''
+            : row[explCol].toString().trim(),
       });
     }
     return result;
-  }
-
-  @override
-  void dispose() {
-    competencyController.dispose();
-    super.dispose();
   }
 }
