@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../controllers/profile_controller.dart';
+import '../services/curriculum_seed_service.dart';
 import '../services/local_db_service.dart';
 import '../services/notification_service.dart';
 import '../services/seed_service.dart';
@@ -101,10 +102,63 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  // ── Dev-only: wipe every subject/lesson and replace with the fixed
+  // GenEd / ProfEd / Specialization curriculum. Destructive, so it's
+  // gated behind a confirmation dialog.
+  Future<void> _seedFixedCurriculum() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text(
+          'Reset to fixed curriculum?',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            color: primaryTextColor(context),
+          ),
+        ),
+        content: Text(
+          'This deletes every existing subject and lesson and replaces '
+          'them with the fixed GenEd / ProfEd / Specialization '
+          'curriculum. This cannot be undone.',
+          style: TextStyle(color: primaryTextColor(context)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel',
+                style: TextStyle(color: secondaryTextColor(context))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Reset & Seed',
+                style:
+                    TextStyle(color: kMaroon, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await CurriculumSeedService.instance.resetAndSeedFixedCurriculum();
+      await LocalDbService.instance.syncAll();
+      if (mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Fixed curriculum seeded ✅')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Seeding failed: $e')),
+        );
+      }
+    }
+  }
+
   // ── Dev-only: verify the inactivity-reminder notification pipeline ─────
-  // Fires immediately on tap, so you can confirm permissions, the
-  // notification channel, and the branded styling without waiting
-  // days for a real "you've been away" reminder to trigger.
   Future<void> _testNotification() async {
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -283,6 +337,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 12),
+            ProfileMenuButton(
+              icon: Icons.auto_stories_rounded,
+              label: 'Seed Fixed Curriculum',
+              onTap: _seedFixedCurriculum,
+            ),
+            const SizedBox(height: 16),
             ProfileMenuButton(
               icon: Icons.bug_report_rounded,
               label: 'Seed Test Lesson/Quiz',
