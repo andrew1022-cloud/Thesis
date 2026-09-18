@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,9 +11,10 @@ import '../services/seed_service.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/profile_widgets.dart';
 import 'analytics_screen.dart';
+import 'auth_screen.dart';
 import 'home_screen.dart';
-import 'subject_screen.dart';
 import 'notes_screen.dart';
+import 'subject_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -60,6 +62,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
         // Already on Profile.
         break;
     }
+  }
+
+  Future<void> _handleLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text(
+          'Log out?',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            color: primaryTextColor(context),
+          ),
+        ),
+        content: Text(
+          'You will be returned to the login screen.',
+          style: TextStyle(color: primaryTextColor(context)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: secondaryTextColor(context)),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Log out',
+              style: TextStyle(
+                color: kMaroon,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const AuthScreen()),
+      (route) => false,
+    );
   }
 
   // ── Dev-only: seed / clear temporary test lesson & quiz ────────────────
@@ -290,6 +341,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 16),
           ProfileMenuButton(
+            icon: Icons.edit_note_rounded,
+            label: 'My Notes',
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const NotesScreen()),
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          ProfileMenuButton(
             icon: Icons.settings_rounded,
             label: 'Settings',
             onTap: _controller.goToSettings,
@@ -313,17 +374,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
           ),
-
           const SizedBox(height: 16),
           ProfileMenuButton(
-            icon: Icons.edit_note_rounded,
-            label: 'My Notes',
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const NotesScreen()),
-              );
-            },
+            icon: Icons.logout_rounded,
+            label: 'Log out',
+            onTap: _handleLogout,
           ),
+
           // ── 4. Dev-only: seed / clear temporary test data, notif test ──────
           // Hidden automatically in release builds via kDebugMode.
           if (kDebugMode) ...[

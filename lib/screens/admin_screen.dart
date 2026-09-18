@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -50,6 +51,15 @@ class _AdminScreenState extends State<AdminScreen> {
         );
         break;
     }
+  }
+
+  Future<void> _handleLogout() async {
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const AuthScreen()),
+      (route) => false,
+    );
   }
 
   @override
@@ -134,12 +144,7 @@ class _AdminScreenState extends State<AdminScreen> {
             ),
           ),
           IconButton(
-            onPressed: () {
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => const AuthScreen()),
-                (route) => false,
-              );
-            },
+            onPressed: _handleLogout,
             icon: const Icon(Icons.logout_rounded, color: Colors.white70),
             tooltip: 'Log out',
           ),
