@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../data/curriculum_data.dart';
 import '../services/local_db_service.dart';
 
 /// One subject row on the Subjects screen, with its competency
@@ -34,6 +35,18 @@ class SubjectGroup {
 
 /// Holds all state for the Subjects screen. The UI only reads from
 /// this controller — it does not group or compute progress itself.
+///
+/// The subject *list* itself is always built from [kFixedCurriculum]
+/// (the app's single source of truth for what subjects/competencies
+/// exist), not from whatever happens to already be synced down from
+/// Firestore. A subject only gets a Firestore doc once an admin has
+/// published at least one competency for it (see
+/// `ContentController._ensureSubjectDoc`) or "Seed Fixed Curriculum"
+/// has been run — so relying on the synced `subjects` table alone
+/// would silently hide any subject nothing has been published for
+/// yet (e.g. only 3 of 13 Specialization subjects showing up). Local
+/// data is still used for progress counts and for any metadata
+/// (colorHex, etc.) that has actually been synced.
 class SubjectController extends ChangeNotifier {
   final LocalDbService _db = LocalDbService.instance;
   final String uid;
@@ -44,66 +57,62 @@ class SubjectController extends ChangeNotifier {
 
   List<SubjectGroup> groups = [];
 
-  // Known category codes, in display order. Any subject whose code
-  // isn't one of these falls into its own group at the end, titled
-  // after its raw code.
-  static const List<String> _categoryOrder = ['GE', 'PE', 'SP'];
-  static const Map<String, String> _categoryTitles = {
-    'GE': 'General Education',
-    'PE': 'Professional Education',
-    'SP': 'Specialization',
-  };
-
   Future<void> loadSubjects() async {
     isLoading = true;
     notifyListeners();
 
-    final subjects = await _db.getSubjects();
-
-    final Map<String, List<Map<String, dynamic>>> byCode = {};
-    for (final subject in subjects) {
-      final code = (subject['code'] as String?) ?? '';
-      byCode.putIfAbsent(code, () => []).add(subject);
-    }
-
-    final orderedCodes = [
-      ..._categoryOrder.where(byCode.containsKey),
-      ...byCode.keys.where((c) => !_categoryOrder.contains(c)),
-    ];
-
     final newGroups = <SubjectGroup>[];
-    for (final code in orderedCodes) {
-      final items = await Future.wait(byCode[code]!.map((subject) async {
-        final subjectId = subject['id'] as String;
 
-        // The local cache may not have this subject's lessons synced
-        // yet — LocalDbService.syncAll() (kicked off in the
-        // background from Home) walks subjects/lessons/quiz
-        // sequentially, so a subject visited early can still show
-        // 0 lessons locally even though Firestore has them. Rather
-        // than showing a stale "0 out of 0" until the user happens
-        // to pull-to-refresh, sync just this subject's lessons on
-        // demand whenever the local count comes back empty.
+    for (final category in kFixedCurriculum) {
+      final items = <SubjectProgressItem>[];
+
+      for (var s = 0; s < category.subjects.length; s++) {
+        final curriculumSubject = category.subjects[s];
+        final subjectId = curriculumSubjectId(category.code, s);
+
+        // Make sure this subject's lessons are synced locally if
+        // they haven't been yet — cheap no-op once cached.
         var total = await _db.getLessonCountForSubject(subjectId);
         if (total == 0) {
           await _db.syncLessonsForSubject(subjectId);
           total = await _db.getLessonCountForSubject(subjectId);
         }
 
+        // If nothing has been published/synced for this subject at
+        // all yet, fall back to the curriculum's own competency count
+        // so it reads "0 out of 13", not the misleading "0 out of 0".
+        final totalCount =
+            total > 0 ? total : curriculumSubject.competencies.length;
+
         final completed =
             await _db.getCompletedLessonCountForSubject(uid, subjectId);
-        final percent = total == 0 ? 0 : ((completed / total) * 100).round();
-        return SubjectProgressItem(
-          subject: subject,
+        final percent =
+            totalCount == 0 ? 0 : ((completed / totalCount) * 100).round();
+
+        // Use the synced Firestore metadata if we have it (real
+        // colorHex, description, etc.); otherwise build a minimal
+        // stand-in straight from curriculum data so the subject still
+        // renders correctly.
+        final cachedSubject = await _db.getSubjectById(subjectId);
+        final subjectMap = cachedSubject ??
+            {
+              'id': subjectId,
+              'name': curriculumSubject.name,
+              'code': category.code,
+              'colorHex': '',
+            };
+
+        items.add(SubjectProgressItem(
+          subject: subjectMap,
           completedCount: completed,
-          totalCount: total,
+          totalCount: totalCount,
           progressPercent: percent,
-        );
-      }));
+        ));
+      }
 
       newGroups.add(SubjectGroup(
-        code: code,
-        title: _categoryTitles[code] ?? (code.isEmpty ? 'Other' : code),
+        code: category.code,
+        title: category.label,
         subjects: items,
       ));
     }
