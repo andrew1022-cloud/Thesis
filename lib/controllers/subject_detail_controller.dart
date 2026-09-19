@@ -90,5 +90,14 @@ class SubjectDetailController extends ChangeNotifier {
     );
   }
 
-  Future<void> refresh() => loadSubjectDetail();
+  /// Pull-to-refresh: sync this subject's lessons and quiz questions
+  /// from Firestore first, then reload from the updated local cache.
+  Future<void> refresh() async {
+    await _db.syncLessonsForSubject(subjectId);
+    final lessons = await _db.getLessons(subjectId);
+    for (final lesson in lessons) {
+      await _db.syncQuizForLesson(subjectId, lesson['id'] as String);
+    }
+    await loadSubjectDetail();
+  }
 }

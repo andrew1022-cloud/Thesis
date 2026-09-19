@@ -34,6 +34,13 @@ class HomeController extends ChangeNotifier {
     await _db.recordAppOpenedToday(uid);
     unawaited(_db.pushPendingSyncs(uid));
 
+    // Sync reviewer content (subjects/lessons/quiz) from Firestore in
+    // the background so the dashboard loads instantly from the local
+    // cache while new admin-published content quietly lands in SQLite.
+    // On the next pull-to-refresh or screen navigation the fresh
+    // content will be visible.
+    unawaited(_db.syncAll());
+
     // Opening the app resets the "you've been away" reminder ladder —
     // request permission (no-op if already granted/denied) and
     // reschedule the next set of inactivity nudges counting from

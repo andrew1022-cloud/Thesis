@@ -99,7 +99,12 @@ class SubjectController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> refresh() => loadSubjects();
+  /// Pull-to-refresh: sync fresh content from Firestore first, then
+  /// rebuild the subject list from the updated local cache.
+  Future<void> refresh() async {
+    await _db.syncAll();
+    await loadSubjects();
+  }
 
   // ---- Actions (hook these up once the exam flows exist) ----
   Future<void> takeSubjectExam(String categoryCode) async {
