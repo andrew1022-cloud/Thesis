@@ -75,7 +75,21 @@ class SubjectController extends ChangeNotifier {
     for (final code in orderedCodes) {
       final items = await Future.wait(byCode[code]!.map((subject) async {
         final subjectId = subject['id'] as String;
-        final total = await _db.getLessonCountForSubject(subjectId);
+
+        // The local cache may not have this subject's lessons synced
+        // yet — LocalDbService.syncAll() (kicked off in the
+        // background from Home) walks subjects/lessons/quiz
+        // sequentially, so a subject visited early can still show
+        // 0 lessons locally even though Firestore has them. Rather
+        // than showing a stale "0 out of 0" until the user happens
+        // to pull-to-refresh, sync just this subject's lessons on
+        // demand whenever the local count comes back empty.
+        var total = await _db.getLessonCountForSubject(subjectId);
+        if (total == 0) {
+          await _db.syncLessonsForSubject(subjectId);
+          total = await _db.getLessonCountForSubject(subjectId);
+        }
+
         final completed =
             await _db.getCompletedLessonCountForSubject(uid, subjectId);
         final percent = total == 0 ? 0 : ((completed / total) * 100).round();

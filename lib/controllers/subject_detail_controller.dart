@@ -41,17 +41,28 @@ class SubjectDetailController extends ChangeNotifier {
     isLoading = true;
     notifyListeners();
 
+    // The local cache may not have this subject's lessons synced yet
+    // — LocalDbService.syncAll() (kicked off in the background from
+    // Home) walks subjects/lessons/quiz sequentially, so this screen
+    // can be opened before that sync reaches this particular subject,
+    // showing a stale "0/0 Done" with no lessons listed. Sync this
+    // subject's lessons on demand whenever the local cache is empty,
+    // rather than relying on a manual pull-to-refresh to fix it.
+    var rawLessons = await _db.getLessons(subjectId);
+    if (rawLessons.isEmpty) {
+      await _db.syncLessonsForSubject(subjectId);
+      rawLessons = await _db.getLessons(subjectId);
+    }
+
     final results = await Future.wait([
       _db.getSubjectById(subjectId),
-      _db.getLessons(subjectId),
       _db.getCompletedLessonIdsForSubject(uid, subjectId),
       _db.getSubjectProgressPercent(uid, subjectId),
     ]);
 
     subject = results[0] as Map<String, dynamic>?;
-    final rawLessons = results[1] as List<Map<String, dynamic>>;
-    final completedIds = results[2] as Set<String>;
-    progressPercent = results[3] as int;
+    final completedIds = results[1] as Set<String>;
+    progressPercent = results[2] as int;
 
     lessons = rawLessons.map((l) {
       final id = l['id'] as String;
