@@ -107,12 +107,17 @@ class ContentFormCard extends StatelessWidget {
 }
 
 /// Dashed-style upload zone. Shows the picked file's name once one is
-/// chosen, with a "Change File" / "Remove file" affordance.
+/// chosen, with a "Change File" / "Remove file" affordance, plus a
+/// "Preview PDF" button when the picked file is a PDF and [onPreview]
+/// is supplied — this actually renders the document (via
+/// `SfPdfViewer.memory` in the caller's dialog), rather than just
+/// showing the extracted text.
 class UploadDropzone extends StatelessWidget {
   final String hintText; // e.g. "Upload a .pdf or Word file"
   final PlatformFile? pickedFile;
   final VoidCallback onChooseFile;
   final VoidCallback onClearFile;
+  final VoidCallback? onPreview;
 
   const UploadDropzone({
     super.key,
@@ -120,10 +125,16 @@ class UploadDropzone extends StatelessWidget {
     required this.pickedFile,
     required this.onChooseFile,
     required this.onClearFile,
+    this.onPreview,
   });
+
+  bool get _isPdf =>
+      (pickedFile?.extension ?? '').toLowerCase() == 'pdf';
 
   @override
   Widget build(BuildContext context) {
+    final showPreview = onPreview != null && pickedFile != null && _isPdf;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
@@ -154,23 +165,52 @@ class UploadDropzone extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          SizedBox(
-            height: 40,
-            child: OutlinedButton(
-              onPressed: onChooseFile,
-              style: OutlinedButton.styleFrom(
-                side: BorderSide(color: Theme.of(context).dividerColor),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              ),
-              child: Text(
-                pickedFile == null ? 'Choose File' : 'Change File',
-                style: TextStyle(
-                  color: primaryTextColor(context),
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                height: 40,
+                child: OutlinedButton(
+                  onPressed: onChooseFile,
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: Theme.of(context).dividerColor),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  child: Text(
+                    pickedFile == null ? 'Choose File' : 'Change File',
+                    style: TextStyle(
+                      color: primaryTextColor(context),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
                 ),
               ),
-            ),
+              if (showPreview) ...[
+                const SizedBox(width: 10),
+                SizedBox(
+                  height: 40,
+                  child: OutlinedButton.icon(
+                    onPressed: onPreview,
+                    icon: const Icon(Icons.picture_as_pdf_rounded,
+                        color: kMaroon, size: 16),
+                    label: const Text(
+                      'Preview PDF',
+                      style: TextStyle(
+                        color: kMaroon,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: kMaroon),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20)),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
           if (pickedFile != null) ...[
             const SizedBox(height: 6),

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../controllers/lesson_controller.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/subject_widgets.dart';
+import 'pdf_viewer_screen.dart';
 import 'quiz_screen.dart';
 
 /// Shown when a lesson row is tapped from the Subject Detail screen.
@@ -61,6 +62,20 @@ class _LessonScreenState extends State<LessonScreen> {
     if (result == true) {
       await _controller.loadLesson();
     }
+  }
+
+  /// Opens the lesson's original, uploaded PDF as an actual paginated
+  /// document — separate from the `content` text shown inline, which
+  /// is only the plain-text extraction used for quick reading/search.
+  void _openPdf(String url) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PdfViewerScreen(
+          url: url,
+          title: (_controller.lesson?['title'] as String?) ?? 'Lesson PDF',
+        ),
+      ),
+    );
   }
 
   @override
@@ -158,6 +173,9 @@ class _LessonScreenState extends State<LessonScreen> {
       );
     }
 
+    final pdfUrl = (lesson['pdfUrl'] as String?) ?? '';
+    final hasPdf = pdfUrl.isNotEmpty;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       child: Column(
@@ -197,6 +215,33 @@ class _LessonScreenState extends State<LessonScreen> {
               ),
             ],
           ),
+
+          if (hasPdf) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 46,
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _openPdf(pdfUrl),
+                icon: const Icon(Icons.picture_as_pdf_rounded, color: kMaroon),
+                label: const Text(
+                  'View Original PDF',
+                  style: TextStyle(
+                    color: kMaroon,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: kMaroon, width: 1.4),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28),
+                  ),
+                ),
+              ),
+            ),
+          ],
+
           const SizedBox(height: 20),
           Container(
             width: double.infinity,

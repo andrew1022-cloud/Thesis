@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../controllers/content_controller.dart';
 import '../widgets/admin_widgets.dart';
@@ -60,6 +61,61 @@ class _ContentScreenState extends State<ContentScreen> {
         SnackBar(content: Text(_controller.successMessage ?? 'Published.')),
       );
     }
+  }
+
+  /// Renders the currently picked PDF (still just sitting in memory,
+  /// not yet published) so the admin can check it looks right before
+  /// publishing — an actual paginated view, not the extracted text.
+  void _previewPdf() {
+    final bytes = _controller.pickedPdfBytes;
+    if (bytes == null) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.all(12),
+        backgroundColor: Colors.black,
+        child: SizedBox(
+          width: double.maxFinite,
+          height: MediaQuery.of(context).size.height * 0.85,
+          child: Column(
+            children: [
+              Container(
+                color: kMaroon,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child: Text(
+                          'PDF Preview',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.of(ctx).pop(),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: SfPdfViewer.memory(
+                  bytes,
+                  canShowScrollHead: true,
+                  canShowScrollStatus: true,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -183,6 +239,7 @@ class _ContentScreenState extends State<ContentScreen> {
       title: 'Upload New Lessons:',
       subtitle: 'Add content for a specific subject topic',
       uploadHint: 'Upload a .pdf or Word file',
+      allowPdfPreview: true,
     );
   }
 
@@ -191,6 +248,7 @@ class _ContentScreenState extends State<ContentScreen> {
       title: 'Upload New Assessments:',
       subtitle: 'Add assessment for a specific subject topic',
       uploadHint: 'Upload a .csv file',
+      allowPdfPreview: false,
     );
   }
 
@@ -198,6 +256,7 @@ class _ContentScreenState extends State<ContentScreen> {
     required String title,
     required String subtitle,
     required String uploadHint,
+    required bool allowPdfPreview,
   }) {
     final categoryItems = kContentCategories
         .map((c) => DropdownMenuItem(value: c.code, child: Text(c.label)))
@@ -246,6 +305,9 @@ class _ContentScreenState extends State<ContentScreen> {
           pickedFile: _controller.pickedFile,
           onChooseFile: _controller.pickFile,
           onClearFile: _controller.clearFile,
+          onPreview: (allowPdfPreview && _controller.canPreviewPickedPdf)
+              ? _previewPdf
+              : null,
         ),
         const SizedBox(height: 18),
 

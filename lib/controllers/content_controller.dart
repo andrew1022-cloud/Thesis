@@ -3,6 +3,9 @@
 //   csv: ^8.0.0                    (global `csv` singleton, csv.decode())
 //   docx_to_text: ^1.0.1           (pull text out of an uploaded .docx)
 //   syncfusion_flutter_pdf: ^33.2.13  (pull text out of an uploaded .pdf)
+//   syncfusion_flutter_pdfviewer: ^33.2.13  (actually *render* a picked
+//     PDF for the admin preview dialog, and the published PDF on the
+//     Lesson screen — see PdfViewerScreen)
 //
 // Legacy binary .doc files are accepted (extension-wise) but aren't
 // safely parseable client-side, so their lesson content stays blank
@@ -19,11 +22,13 @@
 // has been run first.
 
 import 'dart:convert';
+import 'dart:typed_data' show Uint8List;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:csv/csv.dart';
 import 'package:docx_to_text/docx_to_text.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
@@ -72,6 +77,7 @@ class ExistingContentItem {
 /// lists below it. The UI only reads from this controller.
 class ContentController extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
 
   ContentTab activeTab = ContentTab.lessons;
 
@@ -144,6 +150,25 @@ class ContentController extends ChangeNotifier {
 
   int _competencyIndexFor(String lessonId) =>
       competenciesForSelectedSubject.indexWhere((e) => e.key == lessonId);
+
+  // =================================================================
+  // PDF PREVIEW (admin-side, before publishing)
+  // =================================================================
+
+  /// True when the currently picked file is a PDF whose bytes are
+  /// available in memory — i.e. it can be rendered directly with
+  /// `SfPdfViewer.memory` in a preview dialog, without needing to
+  /// publish or upload it first.
+  bool get canPreviewPickedPdf =>
+      activeTab == ContentTab.lessons &&
+      pickedFile != null &&
+      (pickedFile!.extension ?? '').toLowerCase() == 'pdf' &&
+      pickedFile!.bytes != null;
+
+  /// Bytes of the currently picked PDF, for the admin preview dialog.
+  /// Null whenever [canPreviewPickedPdf] is false.
+  Uint8List? get pickedPdfBytes =>
+      canPreviewPickedPdf ? pickedFile!.bytes : null;
 
   Future<void> init() async {
     isLoading = true;
@@ -404,6 +429,37 @@ class ContentController extends ChangeNotifier {
     }, SetOptions(merge: true));
   }
 
+  /// If the picked file is a PDF, uploads its original bytes to
+  /// Firebase Storage (under `lesson_pdfs/{subjectId}/{lessonId}.pdf`,
+  /// overwriting any previous upload for this competency) and returns
+  /// its public download URL — this is what `PdfViewerScreen` renders
+  /// on the student-facing Lesson screen, as opposed to the plain
+  /// extracted text. Returns null for non-PDF uploads (e.g. .docx) or
+  /// if the upload fails, in which case the lesson simply has no
+  /// `pdfUrl` and only the extracted text is shown.
+  Future<String?> _uploadPdfIfNeeded(String subjectId, String lessonId) async {
+    final file = pickedFile;
+    if (file == null || file.bytes == null) return null;
+    final ext = (file.extension ?? '').toLowerCase();
+    if (ext != 'pdf') return null;
+
+    try {
+      final ref = _storage
+          .ref()
+          .child('lesson_pdfs')
+          .child(subjectId)
+          .child('$lessonId.pdf');
+      await ref.putData(
+        file.bytes!,
+        SettableMetadata(contentType: 'application/pdf'),
+      );
+      return await ref.getDownloadURL();
+    } catch (e) {
+      debugPrint('ContentController: PDF upload failed: $e');
+      return null;
+    }
+  }
+
   Future<void> _publishLesson() async {
     final subjectId = selectedSubjectId!;
     final lessonId = selectedCompetencyLessonId!;
@@ -411,6 +467,12 @@ class ContentController extends ChangeNotifier {
     final competency = competenciesForSelectedSubject[competencyIndex].value;
 
     await _ensureSubjectDoc(subjectId);
+
+    // Upload the original PDF (if that's what was picked) so students
+    // can view the real, paginated document — not just its extracted
+    // text. A non-PDF upload (e.g. Word) explicitly clears any PDF
+    // left over from a previous publish of this same competency.
+    final pdfUrl = await _uploadPdfIfNeeded(subjectId, lessonId);
 
     await _firestore
         .collection('subjects')
@@ -420,6 +482,7 @@ class ContentController extends ChangeNotifier {
         .set({
       'title': competency.title,
       'content': (_extractedText ?? '').trim(),
+      'pdfUrl': pdfUrl ?? '',
       'order': competencyIndex,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
@@ -433,9 +496,9 @@ class ContentController extends ChangeNotifier {
 
     await _ensureSubjectDoc(subjectId);
 
-    // Merge only title/order here — don't touch 'content' so a lesson
-    // that already has published content keeps it when only its quiz
-    // is being (re)published.
+    // Merge only title/order here — don't touch 'content'/'pdfUrl' so
+    // a lesson that already has published content keeps it when only
+    // its quiz is being (re)published.
     await _firestore
         .collection('subjects')
         .doc(subjectId)

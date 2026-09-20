@@ -34,7 +34,12 @@ import 'notes_db_service.dart';
 ///     - name, description, code ('GE'|'PE'|'SP'), colorHex, order, updatedAt
 ///
 ///   subjects/{subjectId}/lessons/{lessonId}
-///     - title, content, order, updatedAt
+///     - title, content, pdfUrl, order, updatedAt
+///       (pdfUrl is the Firebase Storage download URL for the
+///       original PDF this lesson's content was extracted from, if
+///       the admin uploaded one — see ContentController. Empty/absent
+///       when the lesson was published from a Word file or has no
+///       source PDF.)
 ///
 ///   subjects/{subjectId}/lessons/{lessonId}/quiz/{questionId}
 ///     - questionText, optionA-D, correctOption, explanation, order, updatedAt
@@ -57,7 +62,7 @@ class LocalDbService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   static const String _dbName = 'reveduc_local.db';
-  static const int _dbVersion = 4;
+  static const int _dbVersion = 5;
 
   static const String tableSubjects = 'subjects';
   static const String tableLessons = 'lessons';
@@ -101,6 +106,7 @@ class LocalDbService {
             subjectId TEXT NOT NULL,
             title TEXT NOT NULL,
             content TEXT,
+            pdfUrl TEXT,
             orderIndex INTEGER DEFAULT 0,
             updatedAt TEXT,
             FOREIGN KEY (subjectId) REFERENCES $tableSubjects (id)
@@ -208,6 +214,13 @@ class LocalDbService {
         if (oldVersion < 4) {
           // Drop bookmarks table if it exists from a previous version.
           await db.execute('DROP TABLE IF EXISTS bookmarks');
+        }
+        if (oldVersion < 5) {
+          // Adds the Storage download URL for a lesson's original PDF
+          // (see ContentController / PdfViewerScreen) alongside the
+          // already-extracted `content` text.
+          await db.execute(
+              'ALTER TABLE $tableLessons ADD COLUMN pdfUrl TEXT');
         }
       },
     );
@@ -317,6 +330,7 @@ class LocalDbService {
       'subjectId': subjectId,
       'title': data['title'] ?? '',
       'content': data['content'] ?? '',
+      'pdfUrl': data['pdfUrl'] ?? '',
       'orderIndex': data['order'] ?? 0,
       'updatedAt':
           (data['updatedAt'] as Timestamp?)?.toDate().toIso8601String(),
