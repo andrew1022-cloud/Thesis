@@ -34,12 +34,11 @@ import 'notes_db_service.dart';
 ///     - name, description, code ('GE'|'PE'|'SP'), colorHex, order, updatedAt
 ///
 ///   subjects/{subjectId}/lessons/{lessonId}
-///     - title, content, pdfUrl, order, updatedAt
-///       (pdfUrl is the Firebase Storage download URL for the
-///       original PDF this lesson's content was extracted from, if
-///       the admin uploaded one — see ContentController. Empty/absent
-///       when the lesson was published from a Word file or has no
-///       source PDF.)
+///     - title, content, order, updatedAt
+///     - pdfVersion, pdfChunkCount: which uploaded PDF (if any) is the
+///       lesson's current one. The PDF bytes themselves live in
+///       lessons/{lessonId}/pdfChunks (see LessonPdfService) and are
+///       read by LessonController directly from Firestore.
 ///
 ///   subjects/{subjectId}/lessons/{lessonId}/quiz/{questionId}
 ///     - questionText, optionA-D, correctOption, explanation, order, updatedAt
@@ -216,9 +215,9 @@ class LocalDbService {
           await db.execute('DROP TABLE IF EXISTS bookmarks');
         }
         if (oldVersion < 5) {
-          // Adds the Storage download URL for a lesson's original PDF
-          // (see ContentController / PdfViewerScreen) alongside the
-          // already-extracted `content` text.
+          // Legacy column from the old Firebase Storage approach. No
+          // longer written or read, but kept so existing installs and
+          // fresh installs share the same schema.
           await db.execute(
               'ALTER TABLE $tableLessons ADD COLUMN pdfUrl TEXT');
         }
@@ -297,6 +296,14 @@ class LocalDbService {
     final db = await database;
     final batch = db.batch();
     final rows = <Map<String, dynamic>>[];
+
+    // Drop questions an admin has since deleted. Only do this when the
+    // answer came from the server, so being offline never wipes the
+    // local copy.
+    if (!snapshot.metadata.isFromCache) {
+      batch.delete(tableQuizQuestions,
+          where: 'lessonId = ?', whereArgs: [lessonId]);
+    }
 
     for (final doc in snapshot.docs) {
       final row = _quizFromDoc(doc, subjectId, lessonId);

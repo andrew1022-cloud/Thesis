@@ -1,21 +1,21 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../widgets/home_widgets.dart' show kMaroon;
 
-/// Full-screen viewer for a lesson's original PDF, streamed from its
-/// Firebase Storage download URL (set on the lesson doc as `pdfUrl`
-/// by ContentController when an admin publishes a lesson from a PDF
-/// upload). This shows the actual paginated document — the
-/// LessonScreen's "content" text is a separate, extracted-text copy
-/// used for the in-app reading view and search/offline caching.
+/// Full-screen viewer for a lesson's original PDF. The bytes are the
+/// PDF already reassembled from Firestore chunks by LessonPdfService
+/// (see LessonController), so opening full screen doesn't download
+/// anything again.
 class PdfViewerScreen extends StatelessWidget {
-  final String url;
+  final Uint8List bytes;
   final String title;
 
   const PdfViewerScreen({
     super.key,
-    required this.url,
+    required this.bytes,
     required this.title,
   });
 
@@ -34,8 +34,8 @@ class PdfViewerScreen extends StatelessWidget {
           style: const TextStyle(color: Colors.white),
         ),
       ),
-      body: SfPdfViewer.network(
-        url,
+      body: SfPdfViewer.memory(
+        bytes,
         canShowScrollHead: true,
         canShowScrollStatus: true,
         canShowPaginationDialog: true,

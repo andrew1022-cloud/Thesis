@@ -11,7 +11,7 @@ import 'admin_screen.dart';
 
 /// The "Contents" tab: lets an admin publish new lesson material or
 /// quiz question banks under a Category → Subject → Competency, and
-/// browse everything that's already published.
+/// browse (and delete) everything that's already published.
 class ContentScreen extends StatefulWidget {
   const ContentScreen({super.key});
 
@@ -456,8 +456,64 @@ class _ContentScreenState extends State<ContentScreen> {
                 isAssessment: !isLessons,
                 estimatedMinutes: item.estimatedMinutes,
                 questionCount: item.questionCount,
+                onDelete: _controller.isDeleting
+                    ? null
+                    : () => _confirmDelete(item, isLessons),
               ))
           .toList(),
+    );
+  }
+
+  Future<void> _confirmDelete(ExistingContentItem item, bool isLessons) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text(
+          isLessons ? 'Delete module?' : 'Delete assessment?',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            color: primaryTextColor(context),
+          ),
+        ),
+        content: Text(
+          isLessons
+              ? 'This removes the uploaded PDF/text for "${item.competencyTitle}" '
+                  '(${item.subjectName}). The competency stays in the app, but '
+                  'students will see no content until you publish a new one. '
+                  'Student progress is kept.'
+              : 'This deletes all ${item.questionCount} quiz question(s) for '
+                  '"${item.competencyTitle}" (${item.subjectName}). '
+                  'This cannot be undone.',
+          style: TextStyle(color: primaryTextColor(context), height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel',
+                style: TextStyle(color: secondaryTextColor(context))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete',
+                style: TextStyle(color: kMaroon, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final error = isLessons
+        ? await _controller.deleteLesson(item)
+        : await _controller.deleteAssessment(item);
+
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          error ?? (isLessons ? 'Module deleted.' : 'Assessment deleted.'),
+        ),
+      ),
     );
   }
 }

@@ -287,9 +287,9 @@ class ContentDropdownField<T> extends StatelessWidget {
 }
 
 /// One row in "Existing Lessons" / "Existing Assessment": subject
-/// name + category tag on top, the competency title, and either a
-/// read-time caption (lessons) or an item-count "Quiz" tag
-/// (assessment).
+/// name + category tag on top, the competency title, and a footer with
+/// a Delete action plus either a read-time caption (lessons) or an
+/// item-count "Quiz" tag (assessment).
 class ExistingContentCard extends StatelessWidget {
   final String subjectName;
   final String categoryLabel;
@@ -297,6 +297,7 @@ class ExistingContentCard extends StatelessWidget {
   final bool isAssessment;
   final int estimatedMinutes;
   final int questionCount;
+  final VoidCallback? onDelete;
 
   const ExistingContentCard({
     super.key,
@@ -306,6 +307,7 @@ class ExistingContentCard extends StatelessWidget {
     required this.isAssessment,
     this.estimatedMinutes = 0,
     this.questionCount = 0,
+    this.onDelete,
   });
 
   @override
@@ -355,32 +357,59 @@ class ExistingContentCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          Align(
-            alignment: Alignment.centerRight,
-            child: isAssessment
-                ? Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: kMaroon.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '$questionCount item${questionCount == 1 ? '' : 's'} · Quiz',
-                      style: const TextStyle(
-                        color: kMaroon,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 11,
-                      ),
-                    ),
-                  )
-                : Text(
-                    '$estimatedMinutes min read',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: secondaryTextColor(context),
+          Row(
+            children: [
+              if (onDelete != null)
+                InkWell(
+                  onTap: onDelete,
+                  borderRadius: BorderRadius.circular(12),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.delete_outline_rounded,
+                            color: kMaroon, size: 18),
+                        SizedBox(width: 4),
+                        Text(
+                          'Delete',
+                          style: TextStyle(
+                            color: kMaroon,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+                ),
+              const Spacer(),
+              isAssessment
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: kMaroon.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '$questionCount item${questionCount == 1 ? '' : 's'} · Quiz',
+                        style: const TextStyle(
+                          color: kMaroon,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11,
+                        ),
+                      ),
+                    )
+                  : Text(
+                      '$estimatedMinutes min read',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: secondaryTextColor(context),
+                      ),
+                    ),
+            ],
           ),
         ],
       ),

@@ -1,11 +1,15 @@
 // Matches these pubspec.yaml versions:
-//   file_picker: ^11.0.3           (static FilePicker.pickFiles(), no .platform)
+//   file_picker: 10.3.10           (FilePicker.platform.pickFiles())
 //   csv: ^8.0.0                    (global `csv` singleton, csv.decode())
 //   docx_to_text: ^1.0.1           (pull text out of an uploaded .docx)
 //   syncfusion_flutter_pdf: ^33.2.13  (pull text out of an uploaded .pdf)
 //   syncfusion_flutter_pdfviewer: ^33.2.13  (actually *render* a picked
 //     PDF for the admin preview dialog, and the published PDF on the
-//     Lesson screen — see PdfViewerScreen)
+//     Lesson screen)
+//
+// PDFs are stored in Firestore only (no Firebase Storage, which needs
+// the paid Blaze plan): see LessonPdfService, which splits the PDF
+// into chunk docs under subjects/{id}/lessons/{id}/pdfChunks.
 //
 // Legacy binary .doc files are accepted (extension-wise) but aren't
 // safely parseable client-side, so their lesson content stays blank
@@ -28,11 +32,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:csv/csv.dart';
 import 'package:docx_to_text/docx_to_text.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import '../data/curriculum_data.dart';
+import '../services/lesson_pdf_service.dart';
 
 /// Which sub-tab of the Contents screen is active.
 enum ContentTab { lessons, assessment }
@@ -77,12 +81,12 @@ class ExistingContentItem {
 /// lists below it. The UI only reads from this controller.
 class ContentController extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
 
   ContentTab activeTab = ContentTab.lessons;
 
   bool isLoading = true;
   bool isPublishing = false;
+  bool isDeleting = false;
   String? formError;
   String? successMessage;
 
@@ -165,7 +169,7 @@ class ContentController extends ChangeNotifier {
   /// True when the currently picked file is a PDF whose bytes are
   /// available in memory — i.e. it can be rendered directly with
   /// `SfPdfViewer.memory` in a preview dialog, without needing to
-  /// publish or upload it first.
+  /// publish it first.
   bool get canPreviewPickedPdf =>
       activeTab == ContentTab.lessons &&
       pickedFile != null &&
@@ -248,7 +252,8 @@ class ContentController extends ChangeNotifier {
 
           final data = lessonDataById[lessonId];
           final content = (data?['content'] as String?) ?? '';
-          if (data != null && content.trim().isNotEmpty) {
+          final hasPdf = ((data?['pdfChunkCount'] as num?)?.toInt() ?? 0) > 0;
+          if (data != null && (content.trim().isNotEmpty || hasPdf)) {
             lessons.add(ExistingContentItem(
               subjectId: subjectId,
               lessonId: lessonId,
@@ -548,18 +553,35 @@ class ContentController extends ChangeNotifier {
       return false;
     }
 
+    // A PDF is stored in Firestore in chunks, so cap its size to stay
+    // inside the free plan's storage / daily-write limits.
+    final pickedBytes = pickedFile!.bytes?.length ?? 0;
+    if (activeTab == ContentTab.lessons &&
+        (pickedFile!.extension ?? '').toLowerCase() == 'pdf' &&
+        pickedBytes > LessonPdfService.maxPdfBytes) {
+      formError =
+          'This PDF is ${(pickedBytes / 1048576).toStringAsFixed(1)} MB. '
+          'The limit is ${LessonPdfService.maxPdfBytes ~/ 1048576} MB — '
+          'please compress it and try again.';
+      notifyListeners();
+      return false;
+    }
+
     isPublishing = true;
     notifyListeners();
 
     try {
+      var pdfChunks = 0;
       if (activeTab == ContentTab.lessons) {
-        await _publishLesson();
+        pdfChunks = await _publishLesson();
       } else {
         await _publishAssessment();
       }
 
       successMessage = activeTab == ContentTab.lessons
-          ? 'Lesson published.'
+          ? (pdfChunks > 0
+              ? 'Lesson published with PDF ($pdfChunks parts).'
+              : 'Lesson published as text only — no PDF was saved.')
           : 'Assessment published.';
 
       try {
@@ -579,7 +601,7 @@ class ContentController extends ChangeNotifier {
       return true;
     } catch (e) {
       debugPrint('ContentController: publish failed: $e');
-      formError = 'Something went wrong while publishing. Please try again.';
+      formError = 'Something went wrong while publishing: $e';
       isPublishing = false;
       notifyListeners();
       return false;
@@ -603,38 +625,31 @@ class ContentController extends ChangeNotifier {
     }, SetOptions(merge: true));
   }
 
-  /// If the picked file is a PDF, uploads its original bytes to
-  /// Firebase Storage (under `lesson_pdfs/{subjectId}/{lessonId}.pdf`,
-  /// overwriting any previous upload for this competency) and returns
-  /// its public download URL — this is what `PdfViewerScreen` renders
-  /// on the student-facing Lesson screen, as opposed to the plain
-  /// extracted text. Returns null for non-PDF uploads (e.g. .docx) or
-  /// if the upload fails, in which case the lesson simply has no
-  /// `pdfUrl` and only the extracted text is shown.
-  Future<String?> _uploadPdfIfNeeded(String subjectId, String lessonId) async {
+  /// If the picked file is a PDF, saves its original bytes into
+  /// Firestore as chunk docs (see LessonPdfService) and returns the
+  /// new version + chunk count. Returns null for non-PDF uploads
+  /// (e.g. .docx). Any failure is thrown, not swallowed, so the admin
+  /// sees it instead of silently publishing a text-only lesson.
+  Future<({int version, int chunkCount})?> _savePdfIfNeeded(
+    String subjectId,
+    String lessonId,
+  ) async {
     final file = pickedFile;
-    if (file == null || file.bytes == null) return null;
-    final ext = (file.extension ?? '').toLowerCase();
-    if (ext != 'pdf') return null;
-
-    try {
-      final ref = _storage
-          .ref()
-          .child('lesson_pdfs')
-          .child(subjectId)
-          .child('$lessonId.pdf');
-      await ref.putData(
-        file.bytes!,
-        SettableMetadata(contentType: 'application/pdf'),
-      );
-      return await ref.getDownloadURL();
-    } catch (e) {
-      debugPrint('ContentController: PDF upload failed: $e');
-      return null;
+    if (file == null) return null;
+    if ((file.extension ?? '').toLowerCase() != 'pdf') return null;
+    if (file.bytes == null) {
+      throw Exception('The file picker did not load the PDF bytes.');
     }
+
+    return LessonPdfService.instance.savePdf(
+      subjectId: subjectId,
+      lessonId: lessonId,
+      bytes: file.bytes!,
+    );
   }
 
-  Future<void> _publishLesson() async {
+  /// Returns how many PDF chunks were saved (0 = no PDF, text only).
+  Future<int> _publishLesson() async {
     final subjectId = selectedSubjectId!;
     final lessonId = selectedCompetencyLessonId!;
     final competencyIndex = _competencyIndexFor(lessonId);
@@ -642,12 +657,12 @@ class ContentController extends ChangeNotifier {
 
     await _ensureSubjectDoc(subjectId);
 
-    // Upload the original PDF (if that's what was picked) so students
-    // can view the real, paginated document — not just its extracted
-    // text. A non-PDF upload (e.g. Word) explicitly clears any PDF
-    // left over from a previous publish of this same competency.
-    final pdfUrl = await _uploadPdfIfNeeded(subjectId, lessonId);
+    // 1) Write the new PDF chunks first, so the previous PDF (if any)
+    //    stays viewable until the lesson doc points at the new one.
+    final pdf = await _savePdfIfNeeded(subjectId, lessonId);
 
+    // 2) Point the lesson at the new PDF. A non-PDF upload (e.g. Word)
+    //    writes version/count 0, which clears any earlier PDF.
     await _firestore
         .collection('subjects')
         .doc(subjectId)
@@ -656,10 +671,125 @@ class ContentController extends ChangeNotifier {
         .set({
       'title': competency.title,
       'content': (_extractedText ?? '').trim(),
-      'pdfUrl': pdfUrl ?? '',
+      'pdfVersion': pdf?.version ?? 0,
+      'pdfChunkCount': pdf?.chunkCount ?? 0,
       'order': competencyIndex,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+
+    // 3) Remove chunks left over from any previous upload.
+    try {
+      await LessonPdfService.instance.deleteStaleChunks(
+        subjectId: subjectId,
+        lessonId: lessonId,
+        keepVersion: pdf?.version,
+      );
+    } catch (e) {
+      debugPrint('ContentController: stale chunk cleanup failed: $e');
+    }
+
+    return pdf?.chunkCount ?? 0;
+  }
+
+  // =================================================================
+  // DELETE
+  // =================================================================
+
+  /// Deletes a published module: clears its text and PDF and removes
+  /// the PDF chunks. The competency's lesson doc itself is kept (with
+  /// an empty body) so it still appears under its subject, its quiz is
+  /// untouched, and students' progress records stay valid.
+  ///
+  /// Returns null on success, or an error message.
+  Future<String?> deleteLesson(ExistingContentItem item) async {
+    if (isDeleting) return 'Please wait for the current delete to finish.';
+    isDeleting = true;
+    notifyListeners();
+
+    try {
+      // Clear the lesson first so students stop seeing it right away.
+      await _firestore
+          .collection('subjects')
+          .doc(item.subjectId)
+          .collection('lessons')
+          .doc(item.lessonId)
+          .set({
+        'content': '',
+        'pdfVersion': 0,
+        'pdfChunkCount': 0,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // Then remove the PDF chunks. If this fails the lesson is already
+      // cleared; leftover chunks are cleaned up on the next publish.
+      try {
+        await LessonPdfService.instance.deleteStaleChunks(
+          subjectId: item.subjectId,
+          lessonId: item.lessonId,
+          keepVersion: null,
+        );
+      } catch (e) {
+        debugPrint('ContentController: chunk cleanup after delete failed: $e');
+      }
+
+      await _refreshExistingAfterDelete();
+      return null;
+    } catch (e) {
+      debugPrint('ContentController: delete lesson failed: $e');
+      return "Couldn't delete the module: $e";
+    } finally {
+      isDeleting = false;
+      notifyListeners();
+    }
+  }
+
+  /// Deletes every quiz question of a published assessment. The
+  /// lesson/competency itself is not touched.
+  ///
+  /// Returns null on success, or an error message.
+  Future<String?> deleteAssessment(ExistingContentItem item) async {
+    if (isDeleting) return 'Please wait for the current delete to finish.';
+    isDeleting = true;
+    notifyListeners();
+
+    try {
+      final snap = await _firestore
+          .collection('subjects')
+          .doc(item.subjectId)
+          .collection('lessons')
+          .doc(item.lessonId)
+          .collection('quiz')
+          .get();
+
+      // Firestore batches are limited to 500 operations.
+      const batchSize = 400;
+      for (var i = 0; i < snap.docs.length; i += batchSize) {
+        final batch = _firestore.batch();
+        for (final doc in snap.docs.skip(i).take(batchSize)) {
+          batch.delete(doc.reference);
+        }
+        await batch.commit();
+      }
+
+      await _refreshExistingAfterDelete();
+      return null;
+    } catch (e) {
+      debugPrint('ContentController: delete assessment failed: $e');
+      return "Couldn't delete the assessment: $e";
+    } finally {
+      isDeleting = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _refreshExistingAfterDelete() async {
+    try {
+      await _loadExistingContent();
+      loadError = null;
+    } catch (e) {
+      // The delete itself succeeded — don't report it as a failure.
+      debugPrint('ContentController: post-delete reload failed: $e');
+    }
   }
 
   Future<void> _publishAssessment() async {
@@ -670,9 +800,9 @@ class ContentController extends ChangeNotifier {
 
     await _ensureSubjectDoc(subjectId);
 
-    // Merge only title/order here — don't touch 'content'/'pdfUrl' so
-    // a lesson that already has published content keeps it when only
-    // its quiz is being (re)published.
+    // Merge only title/order here — don't touch 'content' or the PDF
+    // fields so a lesson that already has published content keeps it
+    // when only its quiz is being (re)published.
     await _firestore
         .collection('subjects')
         .doc(subjectId)

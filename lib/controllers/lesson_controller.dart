@@ -1,5 +1,9 @@
+import 'dart:typed_data';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../services/lesson_pdf_service.dart';
 import '../services/local_db_service.dart';
 
 /// Holds all state for the Lesson screen. The UI only reads from this
@@ -16,24 +20,37 @@ class LessonController extends ChangeNotifier {
     required this.lessonId,
   });
 
+  bool _disposed = false;
+
   bool isLoading = true;
   Map<String, dynamic>? lesson;
   bool isCompleted = false;
   bool hasQuiz = false;
 
+  // ---- PDF state ----
+  /// The reassembled PDF, once downloaded from Firestore.
+  Uint8List? pdfBytes;
+  bool isPdfLoading = false;
+
+  /// True when the lesson has a PDF but it couldn't be loaded
+  /// (offline and never opened before, Firestore error, ...).
+  bool pdfLoadFailed = false;
+
+  // Read straight from the lesson doc in Firestore (not from the local
+  // SQLite cache), so this works without any local database migration.
+  int _pdfChunkCount = 0;
+  int _pdfVersion = 0;
+
+  /// Whether an admin published a PDF for this lesson.
+  bool get hasPdf => _pdfChunkCount > 0 && _pdfVersion > 0;
+
   Future<void> loadLesson() async {
     isLoading = true;
     notifyListeners();
 
-    // Always refresh this subject's lessons from Firestore first —
-    // relying on whatever's already cached locally is what silently
-    // hides a lesson's `pdfUrl`. If an admin published (or
-    // re-published, e.g. attaching a PDF for the first time) after
-    // this device last synced, the local SQLite row can still be the
-    // old text-only version, so the screen falls back to the plain
-    // extracted text even though a real PDF now exists. Since this
-    // is a single lesson doc read, the sync is cheap and keeps the
-    // "original PDF" view actually current.
+    // Always refresh this subject's lessons from Firestore first, so a
+    // freshly (re)published PDF's version/chunk count is picked up
+    // instead of a stale cached row.
     try {
       await _db.syncLessonsForSubject(subjectId);
     } catch (e) {
@@ -53,6 +70,8 @@ class LessonController extends ChangeNotifier {
     isCompleted = completedIds.contains(lessonId);
     hasQuiz = (results[2] as List<Map<String, dynamic>>).isNotEmpty;
 
+    await _readPdfFieldsFromFirestore();
+
     // Opening the lesson is what powers "Continue by Subject" on Home.
     await _db.recordLessonOpened(
       uid: uid,
@@ -61,6 +80,65 @@ class LessonController extends ChangeNotifier {
     );
 
     isLoading = false;
+    notifyListeners();
+
+    // The PDF can be several MB, so it loads after the screen is
+    // already showing (title, buttons) rather than behind a spinner.
+    await loadPdf();
+  }
+
+  /// Reads which PDF (if any) the admin published for this lesson.
+  /// Falls back to Firestore's on-device cache when offline.
+  Future<void> _readPdfFieldsFromFirestore() async {
+    _pdfVersion = 0;
+    _pdfChunkCount = 0;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('subjects')
+          .doc(subjectId)
+          .collection('lessons')
+          .doc(lessonId)
+          .get();
+      final data = snap.data();
+      _pdfVersion = (data?['pdfVersion'] as num?)?.toInt() ?? 0;
+      _pdfChunkCount = (data?['pdfChunkCount'] as num?)?.toInt() ?? 0;
+      debugPrint('Lesson PDF fields (Firestore): lessonId=$lessonId '
+          'version=${data?['pdfVersion']} chunks=${data?['pdfChunkCount']}');
+    } catch (e) {
+      debugPrint('LessonController: could not read PDF fields: $e');
+    }
+  }
+
+  /// Downloads the lesson's PDF from Firestore. Also used by the
+  /// "Try again" button when the first attempt fails.
+  Future<void> loadPdf() async {
+    if (!hasPdf) {
+      pdfBytes = null;
+      pdfLoadFailed = false;
+      isPdfLoading = false;
+      notifyListeners();
+      return;
+    }
+
+    isPdfLoading = true;
+    pdfLoadFailed = false;
+    notifyListeners();
+
+    Uint8List? bytes;
+    try {
+      bytes = await LessonPdfService.instance.loadPdf(
+        subjectId: subjectId,
+        lessonId: lessonId,
+        version: _pdfVersion,
+        chunkCount: _pdfChunkCount,
+      );
+    } catch (e) {
+      debugPrint('LessonController: failed to load PDF: $e');
+    }
+
+    pdfBytes = bytes;
+    pdfLoadFailed = bytes == null;
+    isPdfLoading = false;
     notifyListeners();
   }
 
@@ -73,5 +151,18 @@ class LessonController extends ChangeNotifier {
     );
     isCompleted = true;
     notifyListeners();
+  }
+
+  // The screen can be popped while a PDF is still downloading; don't
+  // notify a disposed controller when that download finishes.
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }

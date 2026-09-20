@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,11 +13,12 @@ import 'quiz_screen.dart';
 
 /// Shown when a lesson row is tapped from the Subject Detail screen.
 ///
-/// If the lesson was published from a PDF (`pdfUrl` is set), that PDF
-/// is rendered directly — real pages, real layout, images, headings,
-/// the works — instead of the plain-text extraction. The extracted
-/// `content` text is only ever shown as a fallback, for lessons that
-/// have no source PDF (e.g. published from a legacy .doc upload).
+/// If the admin published the lesson from a PDF, that PDF is rendered
+/// directly — real pages, real layout, images, headings — instead of
+/// the plain-text extraction. The PDF is stored in Firestore as chunks
+/// (see LessonPdfService) and reassembled by LessonController. The
+/// extracted `content` text is only shown as a fallback for lessons
+/// with no source PDF (e.g. published from a Word file).
 class LessonScreen extends StatefulWidget {
   final String subjectId;
   final String lessonId;
@@ -71,13 +74,12 @@ class _LessonScreenState extends State<LessonScreen> {
   }
 
   /// Opens the PDF in its own full-screen viewer (more room to read
-  /// and zoom) — reachable from the "Full Screen" action above the
-  /// embedded viewer.
-  void _openPdfFullScreen(String url) {
+  /// and zoom) — reachable from the "Full Screen" action.
+  void _openPdfFullScreen(Uint8List bytes) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => PdfViewerScreen(
-          url: url,
+          bytes: bytes,
           title: (_controller.lesson?['title'] as String?) ?? 'Lesson PDF',
         ),
       ),
@@ -182,16 +184,13 @@ class _LessonScreenState extends State<LessonScreen> {
       );
     }
 
-    final pdfUrl = (lesson['pdfUrl'] as String?) ?? '';
-    final hasPdf = pdfUrl.isNotEmpty;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildLessonInfo(lesson),
         Expanded(
-          child: hasPdf
-              ? _buildPdfSection(pdfUrl)
+          child: _controller.hasPdf
+              ? _buildPdfSection()
               : _buildTextOnlyBody(lesson),
         ),
       ],
@@ -245,13 +244,81 @@ class _LessonScreenState extends State<LessonScreen> {
     );
   }
 
+  /// The PDF area itself: spinner while the chunks download, an error
+  /// with "Try again" if that failed, otherwise the rendered document.
+  Widget _buildPdfViewerArea() {
+    if (_controller.isPdfLoading) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: kMaroon),
+            const SizedBox(height: 12),
+            Text(
+              'Loading PDF…',
+              style: TextStyle(
+                fontSize: 13,
+                color: secondaryTextColor(context),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final bytes = _controller.pdfBytes;
+    if (bytes == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.picture_as_pdf_rounded,
+                  size: 36, color: secondaryTextColor(context)),
+              const SizedBox(height: 10),
+              Text(
+                "Couldn't load the PDF. Check your connection and try again.",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: secondaryTextColor(context),
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _controller.loadPdf,
+                child: const Text(
+                  'Try again',
+                  style: TextStyle(
+                    color: kMaroon,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return SfPdfViewer.memory(
+      bytes,
+      controller: _pdfController,
+      canShowScrollHead: true,
+      canShowScrollStatus: true,
+      enableDoubleTapZooming: true,
+    );
+  }
+
   /// Primary reading experience for a lesson published from a PDF:
-  /// the real document, rendered page-by-page in its original format
-  /// — not a plain-text extraction. The viewer fills the remaining
-  /// screen and scrolls/zooms on its own; actions (full screen, mark
-  /// complete, quiz) are pinned in a bar underneath so they're always
-  /// reachable no matter how far the user has scrolled into the PDF.
-  Widget _buildPdfSection(String pdfUrl) {
+  /// the real document, rendered page-by-page in its original format.
+  /// Actions (full screen, mark complete, quiz) are pinned in a bar
+  /// underneath so they're always reachable.
+  Widget _buildPdfSection() {
+    final bytes = _controller.pdfBytes;
+
     return Column(
       children: [
         Expanded(
@@ -262,13 +329,7 @@ class _LessonScreenState extends State<LessonScreen> {
               border: Border.all(color: Theme.of(context).dividerColor),
             ),
             clipBehavior: Clip.antiAlias,
-            child: SfPdfViewer.network(
-              pdfUrl,
-              controller: _pdfController,
-              canShowScrollHead: true,
-              canShowScrollStatus: true,
-              enableDoubleTapZooming: true,
-            ),
+            child: _buildPdfViewerArea(),
           ),
         ),
         const SizedBox(height: 12),
@@ -278,7 +339,8 @@ class _LessonScreenState extends State<LessonScreen> {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => _openPdfFullScreen(pdfUrl),
+                  onPressed:
+                      bytes == null ? null : () => _openPdfFullScreen(bytes),
                   icon: const Icon(Icons.fullscreen_rounded, color: kMaroon),
                   label: const Text(
                     'Full Screen',
@@ -343,8 +405,8 @@ class _LessonScreenState extends State<LessonScreen> {
   }
 
   /// Fallback for lessons published without a source PDF (e.g. a
-  /// legacy .doc upload) — the only case where the plain-text
-  /// `content` field is shown at all.
+  /// Word upload) — the only case where the plain-text `content`
+  /// field is shown at all.
   Widget _buildTextOnlyBody(Map<String, dynamic> lesson) {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
