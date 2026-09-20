@@ -86,6 +86,13 @@ class ContentController extends ChangeNotifier {
   String? formError;
   String? successMessage;
 
+  /// Set when the initial load of "Existing Lessons/Assessment" fails
+  /// (e.g. a Firestore permission-denied on the collectionGroup
+  /// queries below, or a missing composite index). Shown in the UI
+  /// with a Retry action instead of leaving the screen stuck on its
+  /// loading spinner forever.
+  String? loadError;
+
   // ---- form state ----
   String? selectedCategoryCode;
   String? selectedSubjectId;
@@ -172,12 +179,42 @@ class ContentController extends ChangeNotifier {
 
   Future<void> init() async {
     isLoading = true;
+    loadError = null;
     notifyListeners();
 
-    await _loadExistingContent();
+    try {
+      await _loadExistingContent();
+    } catch (e) {
+      debugPrint('ContentController: failed to load existing content: $e');
+      loadError = _describeLoadError(e);
+      existingLessons = [];
+      existingAssessments = [];
+    }
 
     isLoading = false;
     notifyListeners();
+  }
+
+  /// Retry hook for a "Retry" button in the UI after [loadError].
+  Future<void> retryInit() => init();
+
+  String _describeLoadError(Object e) {
+    if (e is FirebaseException && e.code == 'permission-denied') {
+      return "Couldn't load existing content: permission denied. "
+          'Firestore rules need to explicitly allow collection-group '
+          'reads on "lessons" and "quiz" '
+          '(e.g. match /{path=**}/lessons/{id} and '
+          'match /{path=**}/quiz/{id}), not just the nested path — a '
+          'rule scoped only to subjects/{id}/lessons/{id} does not '
+          'cover a collectionGroup() query.';
+    }
+    if (e is FirebaseException && e.code == 'failed-precondition') {
+      return "Couldn't load existing content: Firestore needs a "
+          'composite index for this query. Check the debug console for '
+          'a link to create it, or open the Firestore console > '
+          'Indexes.';
+    }
+    return "Couldn't load existing content. Please try again.";
   }
 
   /// Scans every lesson/quiz doc that belongs to the fixed curriculum
@@ -395,7 +432,14 @@ class ContentController extends ChangeNotifier {
           ? 'Lesson published.'
           : 'Assessment published.';
 
-      await _loadExistingContent();
+      try {
+        await _loadExistingContent();
+        loadError = null;
+      } catch (e) {
+        // Publishing itself succeeded — don't block on the list
+        // refresh failing, just surface it quietly.
+        debugPrint('ContentController: post-publish reload failed: $e');
+      }
       selectedCompetencyLessonId = null;
       pickedFile = null;
       _extractedText = null;

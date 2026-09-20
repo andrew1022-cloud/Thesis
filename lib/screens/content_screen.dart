@@ -142,7 +142,9 @@ class _ContentScreenState extends State<ContentScreen> {
                   child: _controller.isLoading
                       ? const Center(
                           child: CircularProgressIndicator(color: kMaroon))
-                      : _buildBody(),
+                      : (_controller.loadError != null
+                          ? _buildLoadErrorState()
+                          : _buildBody()),
                 ),
               ],
             );
@@ -194,6 +196,52 @@ class _ContentScreenState extends State<ContentScreen> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  /// Shown when the initial "Existing Lessons/Assessment" load fails
+  /// (e.g. Firestore permission-denied on the collectionGroup queries,
+  /// or a missing composite index) — see ContentController.loadError.
+  Widget _buildLoadErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline_rounded, color: kMaroon, size: 40),
+            const SizedBox(height: 12),
+            Text(
+              _controller.loadError!,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: secondaryTextColor(context),
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              height: 44,
+              child: ElevatedButton(
+                onPressed: _controller.retryInit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kMaroon,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                ),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  child: Text('Retry',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
