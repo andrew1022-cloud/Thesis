@@ -6,19 +6,30 @@ import '../controllers/quiz_controller.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/quiz_widgets.dart';
 
-/// Takes a quiz — either one lesson's competency quiz (pass [lessonId])
-/// or a whole subject's quiz (leave [lessonId] null, used by "Take a
-/// Subject Quiz"). Pops with `true` if taking it changed a lesson's
-/// completion status, so the screen behind it knows to refresh.
+/// Takes an assessment. What it contains depends on [mode]:
+/// - [QuizMode.competency]  → 5 questions from one lesson
+///   (pass [subjectId] + [lessonId]).
+/// - [QuizMode.topic]       → 15 questions across a topic's competencies
+///   (pass [subjectId]).
+/// - [QuizMode.subjectExam] → 150 questions for one category
+///   (pass [categoryCode]: 'GE' | 'PE' | 'SP').
+/// - [QuizMode.mockExam]    → 450 questions across all categories.
+///
+/// Pops with `true` if taking it changed a lesson's completion status,
+/// so the screen behind it knows to refresh.
 class QuizScreen extends StatefulWidget {
-  final String subjectId;
+  final QuizMode mode;
+  final String? subjectId;
   final String? lessonId;
+  final String? categoryCode;
   final String title;
 
   const QuizScreen({
     super.key,
-    required this.subjectId,
+    required this.mode,
+    this.subjectId,
     this.lessonId,
+    this.categoryCode,
     required this.title,
   });
 
@@ -34,9 +45,11 @@ class _QuizScreenState extends State<QuizScreen> {
     super.initState();
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     _controller = QuizController(
+      mode: widget.mode,
       uid: uid,
       subjectId: widget.subjectId,
       lessonId: widget.lessonId,
+      categoryCode: widget.categoryCode,
     );
     _controller.loadQuiz();
   }
@@ -201,6 +214,17 @@ class _QuizScreenState extends State<QuizScreen> {
             currentIndex: _controller.currentIndex,
             total: _controller.questions.length,
           ),
+          if (_controller.isShort) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Only ${_controller.questions.length} of '
+              '${_controller.requestedCount} questions are available so far.',
+              style: TextStyle(
+                fontSize: 11,
+                color: secondaryTextColor(context),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           Text(
             question.questionText,
@@ -313,7 +337,7 @@ class _QuizScreenState extends State<QuizScreen> {
             total: _controller.questions.length,
             passed: _controller.passed,
           ),
-          if (!_controller.isSubjectQuiz) ...[
+          if (_controller.isCompetencyQuiz) ...[
             const SizedBox(height: 10),
             Text(
               _controller.passed

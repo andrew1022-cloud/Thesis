@@ -24,6 +24,11 @@
 // curriculumLessonId) so publishing always writes to the same doc a
 // given competency would use, whether or not "Seed Fixed Curriculum"
 // has been run first.
+//
+// Assessment CSV columns: questionText, optionA, optionB, optionC,
+// optionD, correctOption, explanation (optional), difficulty
+// (optional: Easy / Moderate / Difficult — a column named "tag" works
+// too). Untagged questions count as Moderate.
 
 import 'dart:convert';
 import 'dart:typed_data' show Uint8List;
@@ -35,6 +40,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
+import '../data/assessment_config.dart';
 import '../data/curriculum_data.dart';
 import '../services/lesson_pdf_service.dart';
 
@@ -845,7 +851,8 @@ class ContentController extends ChangeNotifier {
 
   /// Expected header row (case-insensitive):
   /// questionText, optionA, optionB, optionC, optionD, correctOption,
-  /// explanation (explanation is optional).
+  /// explanation (optional), difficulty (optional — Easy / Moderate /
+  /// Difficult; a column named "tag" is accepted too).
   Future<List<Map<String, dynamic>>> _parseCsv(PlatformFile file) async {
     final bytes = file.bytes;
     if (bytes == null) return [];
@@ -865,11 +872,13 @@ class ContentController extends ChangeNotifier {
     final dCol = col('optionD');
     final correctCol = col('correctOption');
     final explCol = col('explanation');
+    final diffCol = col('difficulty') != -1 ? col('difficulty') : col('tag');
 
     if ([qCol, aCol, bCol, cCol, dCol, correctCol].any((i) => i == -1)) {
       throw Exception(
           'CSV must have columns: questionText, optionA, optionB, optionC, '
-          'optionD, correctOption, explanation (optional).');
+          'optionD, correctOption, explanation (optional), '
+          'difficulty (optional).');
     }
 
     final result = <Map<String, dynamic>>[];
@@ -885,6 +894,13 @@ class ContentController extends ChangeNotifier {
         'explanation': (explCol == -1 || row.length <= explCol)
             ? ''
             : row[explCol].toString().trim(),
+        // Stored as 'easy' | 'moderate' | 'difficult'. Blank or
+        // unrecognized values count as moderate.
+        'difficulty': parseDifficulty(
+          (diffCol == -1 || row.length <= diffCol)
+              ? null
+              : row[diffCol].toString(),
+        ).name,
       });
     }
     return result;

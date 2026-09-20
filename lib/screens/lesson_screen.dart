@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../controllers/lesson_controller.dart';
+import '../controllers/quiz_controller.dart' show QuizMode;
 import '../widgets/home_widgets.dart';
 import '../widgets/subject_widgets.dart';
 import 'pdf_viewer_screen.dart';
@@ -62,6 +63,7 @@ class _LessonScreenState extends State<LessonScreen> {
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => QuizScreen(
+          mode: QuizMode.competency,
           subjectId: widget.subjectId,
           lessonId: widget.lessonId,
           title: (_controller.lesson?['title'] as String?) ?? 'Quiz',

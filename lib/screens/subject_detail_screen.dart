@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../controllers/quiz_controller.dart' show QuizMode;
 import '../controllers/subject_detail_controller.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/subject_widgets.dart';
@@ -15,7 +16,7 @@ import 'notes_screen.dart';
 
 /// Shown when a subject is tapped from the Subjects screen. Displays
 /// that subject's lessons ("competencies") with completion status,
-/// overall progress, and a CTA to take that subject's quiz.
+/// overall progress, and a CTA to take that topic's quiz.
 class SubjectDetailScreen extends StatefulWidget {
   final String subjectId;
 
@@ -251,13 +252,14 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
 
           const ActionDivider(),
           ExamActionButton(
-            label: 'Take a Subject Quiz',
+            label: 'Take a Topic Quiz',
             onPressed: _controller.lessons.isEmpty
                 ? null
                 : () async {
                     await Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => QuizScreen(
+                          mode: QuizMode.topic,
                           subjectId: widget.subjectId,
                           title: subject['name'] as String,
                         ),

@@ -41,11 +41,13 @@ import 'notes_db_service.dart';
 ///       read by LessonController directly from Firestore.
 ///
 ///   subjects/{subjectId}/lessons/{lessonId}/quiz/{questionId}
-///     - questionText, optionA-D, correctOption, explanation, order, updatedAt
+///     - questionText, optionA-D, correctOption, explanation,
+///       difficulty ('easy'|'moderate'|'difficult'), order, updatedAt
 ///
 ///   users/{uid}/quizAttempts/{attemptId}   (auto-generated id)
 ///     - subjectId, lessonId, score, totalItems, quizType, dateTaken
-///     - quizType: 'competency' | 'lesson' | 'subject'
+///     - quizType: 'competency' | 'topic' | 'subject_exam' | 'mock_exam'
+///       (older attempts may say 'lesson' or 'subject')
 ///
 ///   users/{uid}/lessonProgress/{lessonId}  (doc id == lessonId)
 ///     - subjectId, isCompleted, lastOpenedAt, completedAt
@@ -61,7 +63,7 @@ class LocalDbService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   static const String _dbName = 'reveduc_local.db';
-  static const int _dbVersion = 5;
+  static const int _dbVersion = 6;
 
   static const String tableSubjects = 'subjects';
   static const String tableLessons = 'lessons';
@@ -126,6 +128,7 @@ class LocalDbService {
             correctOption TEXT NOT NULL,
             explanation TEXT,
             orderIndex INTEGER DEFAULT 0,
+            difficulty TEXT DEFAULT 'moderate',
             updatedAt TEXT,
             FOREIGN KEY (lessonId) REFERENCES $tableLessons (id)
               ON DELETE CASCADE
@@ -220,6 +223,14 @@ class LocalDbService {
           // fresh installs share the same schema.
           await db.execute(
               'ALTER TABLE $tableLessons ADD COLUMN pdfUrl TEXT');
+        }
+        if (oldVersion < 6) {
+          // Difficulty tag per quiz question (easy / moderate /
+          // difficult) — drives the 30/50/20 mix in every assessment.
+          // Existing rows read as 'moderate' until the next sync
+          // brings down the real tags from Firestore.
+          await db.execute(
+              "ALTER TABLE $tableQuizQuestions ADD COLUMN difficulty TEXT DEFAULT 'moderate'");
         }
       },
     );
@@ -358,6 +369,7 @@ class LocalDbService {
       'optionD': data['optionD'] ?? '',
       'correctOption': data['correctOption'] ?? '',
       'explanation': data['explanation'] ?? '',
+      'difficulty': data['difficulty'] ?? 'moderate',
       'orderIndex': data['order'] ?? 0,
       'updatedAt':
           (data['updatedAt'] as Timestamp?)?.toDate().toIso8601String(),
@@ -427,6 +439,29 @@ class LocalDbService {
       all.addAll(qs);
     }
     return all;
+  }
+
+  /// Quiz questions for many subjects in a single query, grouped by
+  /// subject id. Used to build category exams (150 questions) and the
+  /// mock exam (450) without one query per lesson.
+  Future<Map<String, List<Map<String, dynamic>>>>
+      getQuizQuestionsGroupedBySubject(Iterable<String> subjectIds) async {
+    final ids = subjectIds.toList();
+    if (ids.isEmpty) return {};
+
+    final db = await database;
+    final placeholders = List.filled(ids.length, '?').join(',');
+    final rows = await db.query(
+      tableQuizQuestions,
+      where: 'subjectId IN ($placeholders)',
+      whereArgs: ids,
+    );
+
+    final grouped = <String, List<Map<String, dynamic>>>{};
+    for (final row in rows) {
+      grouped.putIfAbsent(row['subjectId'] as String, () => []).add(row);
+    }
+    return grouped;
   }
 
   Future<List<Map<String, dynamic>>> getQuizQuestions(String lessonId) async {

@@ -2,12 +2,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../controllers/quiz_controller.dart' show QuizMode;
 import '../controllers/subject_controller.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/subject_widgets.dart';
 import 'analytics_screen.dart';
 import 'home_screen.dart';
 import 'profile_screen.dart';
+import 'quiz_screen.dart';
 import 'subject_detail_screen.dart';
 
 class SubjectScreen extends StatefulWidget {
@@ -55,6 +57,10 @@ class _SubjectScreenState extends State<SubjectScreen> {
         );
         break;
     }
+  }
+
+  void _openQuiz(Widget screen) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
   }
 
   @override
@@ -212,13 +218,24 @@ class _SubjectScreenState extends State<SubjectScreen> {
         const ActionDivider(),
         ExamActionButton(
           label: 'Take a Subject Exam',
-          onPressed: () => _controller.takeSubjectExam(group.code),
+          onPressed: () => _openQuiz(
+            QuizScreen(
+              mode: QuizMode.subjectExam,
+              categoryCode: group.code,
+              title: '${group.title} Exam',
+            ),
+          ),
         ),
         if (isLast) ...[
           const ActionDivider(),
           ExamActionButton(
             label: 'Take a Mock Exam',
-            onPressed: _controller.takeMockExam,
+            onPressed: () => _openQuiz(
+              const QuizScreen(
+                mode: QuizMode.mockExam,
+                title: 'Mock Exam',
+              ),
+            ),
           ),
         ],
       ],

@@ -47,6 +47,9 @@ class SubjectGroup {
 /// yet (e.g. only 3 of 13 Specialization subjects showing up). Local
 /// data is still used for progress counts and for any metadata
 /// (colorHex, etc.) that has actually been synced.
+///
+/// Subject Exam / Mock Exam navigation lives in SubjectScreen, which
+/// opens QuizScreen with the matching QuizMode.
 class SubjectController extends ChangeNotifier {
   final LocalDbService _db = LocalDbService.instance;
   final String uid;
@@ -127,16 +130,5 @@ class SubjectController extends ChangeNotifier {
   Future<void> refresh() async {
     await _db.syncAll();
     await loadSubjects();
-  }
-
-  // ---- Actions (hook these up once the exam flows exist) ----
-  Future<void> takeSubjectExam(String categoryCode) async {
-    // TODO: navigate to the subject-exam flow for this category.
-    debugPrint('Take a Subject Exam tapped for "$categoryCode"');
-  }
-
-  Future<void> takeMockExam() async {
-    // TODO: navigate to the mock-exam flow.
-    debugPrint('Take a Mock Exam tapped');
   }
 }
