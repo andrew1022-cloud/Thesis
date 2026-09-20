@@ -367,11 +367,14 @@ class ContentController extends ChangeNotifier {
 
     try {
       if (ext == 'docx') {
-        _extractedText = docxToText(bytes);
+        _extractedText = _dropRepeatedPageFurniture(
+          _reflowByBlankLines(docxToText(bytes)),
+        );
       } else if (ext == 'pdf') {
         final document = PdfDocument(inputBytes: bytes);
-        _extractedText = PdfTextExtractor(document).extractText();
+        final raw = _extractTextByLinePosition(document);
         document.dispose();
+        _extractedText = _dropRepeatedPageFurniture(raw);
       } else {
         // Legacy .doc — leave content blank rather than risk garbled text.
         _extractedText = '';
@@ -381,6 +384,133 @@ class ContentController extends ChangeNotifier {
       _extractedText = '';
     }
     notifyListeners();
+  }
+
+  /// Rebuilds readable paragraphs from a PDF using each line's actual
+  /// position on the page, rather than trusting the newlines
+  /// `PdfTextExtractor.extractText()` embeds in its output.
+  ///
+  /// Those embedded newlines turned out to be unreliable for some
+  /// PDFs: a single visual line (e.g. a title using an em dash, or
+  /// any run of differently-styled text) can get split into several
+  /// separate "lines" in the extracted string, and genuine paragraph
+  /// breaks aren't consistently marked by a blank line either — both
+  /// of which made the student-facing lesson screen render as
+  /// fragmented text instead of normal prose.
+  ///
+  /// Using `extractTextLines()` instead gives each line's bounding
+  /// box, so line breaks can be reconstructed from real page geometry
+  /// per page: a small vertical gap to the next line (including
+  /// near-zero — fragments of the same visual line) is treated as a
+  /// continuation and joined with a space; a gap noticeably larger
+  /// than a normal line height is treated as an actual paragraph
+  /// break.
+  String _extractTextByLinePosition(PdfDocument document) {
+    final extractor = PdfTextExtractor(document);
+    final buffer = StringBuffer();
+
+    for (var pageIndex = 0; pageIndex < document.pages.count; pageIndex++) {
+      List<TextLine> lines;
+      try {
+        lines = extractor.extractTextLines(
+          startPageIndex: pageIndex,
+          endPageIndex: pageIndex,
+        );
+      } catch (e) {
+        debugPrint(
+            'ContentController: extractTextLines failed on page $pageIndex: $e');
+        continue;
+      }
+
+      double? previousBottom;
+      double typicalLineHeight = 12;
+
+      for (final line in lines) {
+        final text = line.text.trim();
+        if (text.isEmpty) continue;
+
+        final top = line.bounds.top;
+        final bottom = line.bounds.bottom;
+        if (line.bounds.height > 0) typicalLineHeight = line.bounds.height;
+
+        if (previousBottom == null) {
+          buffer.write(text);
+        } else {
+          final gap = top - previousBottom;
+          final isNewParagraph = gap > typicalLineHeight * 0.6;
+          buffer
+            ..write(isNewParagraph ? '\n\n' : ' ')
+            ..write(text);
+        }
+        previousBottom = bottom;
+      }
+      buffer.write('\n\n'); // always start the next page fresh
+    }
+
+    return buffer.toString();
+  }
+
+  /// Simpler paragraph reflow used for DOCX text (which, unlike the
+  /// PDF path above, comes from `docx_to_text` parsing real `<w:p>`
+  /// paragraph elements, so blank lines reliably mark real paragraph
+  /// breaks). A blank line (2+ consecutive newlines) is kept as a
+  /// paragraph break; any other newline is a soft wrap joined with a
+  /// space. Only a genuine bullet glyph or numbered-list marker keeps
+  /// its own line — a bare "-" is deliberately NOT treated as a
+  /// bullet, since it's far more often a stray fragment (an em dash,
+  /// a mid-title hyphen) than an actual list item.
+  String _reflowByBlankLines(String raw) {
+    if (raw.trim().isEmpty) return '';
+
+    final normalized = raw.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final rawParagraphs = normalized.split(RegExp(r'\n{2,}'));
+    final paragraphs = <String>[];
+
+    for (final rawParagraph in rawParagraphs) {
+      final lines = rawParagraph
+          .split('\n')
+          .map((l) => l.trim())
+          .where((l) => l.isNotEmpty)
+          .toList();
+      if (lines.isEmpty) continue;
+
+      final buffer = StringBuffer(lines.first);
+      for (var i = 1; i < lines.length; i++) {
+        final line = lines[i];
+        final isBullet = RegExp(r'^(●|•|\d+[.)])\s').hasMatch(line);
+        buffer.write(isBullet ? '\n$line' : ' $line');
+      }
+      paragraphs.add(buffer.toString());
+    }
+
+    return paragraphs.join('\n\n');
+  }
+
+  /// Drops page furniture: lone "Page N" markers, and any short
+  /// paragraph (a running header/footer) that repeats across most of
+  /// the document. The length cap keeps this from ever discarding a
+  /// genuine multi-sentence paragraph that just happens to repeat.
+  String _dropRepeatedPageFurniture(String text) {
+    final paragraphs = text
+        .split(RegExp(r'\n{2,}'))
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (paragraphs.isEmpty) return '';
+
+    final counts = <String, int>{};
+    for (final p in paragraphs) {
+      counts[p] = (counts[p] ?? 0) + 1;
+    }
+    final pageNumberPattern = RegExp(r'^Page\s+\d+$', caseSensitive: false);
+
+    final cleaned = paragraphs.where((p) {
+      if (pageNumberPattern.hasMatch(p)) return false;
+      if (p.length <= 100 && (counts[p] ?? 0) >= 3) return false;
+      return true;
+    }).toList();
+
+    return cleaned.join('\n\n');
   }
 
   void clearFile() {

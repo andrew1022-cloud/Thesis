@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../controllers/lesson_controller.dart';
 import '../widgets/home_widgets.dart';
@@ -9,8 +10,12 @@ import 'pdf_viewer_screen.dart';
 import 'quiz_screen.dart';
 
 /// Shown when a lesson row is tapped from the Subject Detail screen.
-/// Displays the lesson's content, lets the user mark it complete, and
-/// links into that lesson's competency quiz if one exists.
+///
+/// If the lesson was published from a PDF (`pdfUrl` is set), that PDF
+/// is rendered directly — real pages, real layout, images, headings,
+/// the works — instead of the plain-text extraction. The extracted
+/// `content` text is only ever shown as a fallback, for lessons that
+/// have no source PDF (e.g. published from a legacy .doc upload).
 class LessonScreen extends StatefulWidget {
   final String subjectId;
   final String lessonId;
@@ -27,6 +32,7 @@ class LessonScreen extends StatefulWidget {
 
 class _LessonScreenState extends State<LessonScreen> {
   late final LessonController _controller;
+  final PdfViewerController _pdfController = PdfViewerController();
 
   @override
   void initState() {
@@ -64,10 +70,10 @@ class _LessonScreenState extends State<LessonScreen> {
     }
   }
 
-  /// Opens the lesson's original, uploaded PDF as an actual paginated
-  /// document — separate from the `content` text shown inline, which
-  /// is only the plain-text extraction used for quick reading/search.
-  void _openPdf(String url) {
+  /// Opens the PDF in its own full-screen viewer (more room to read
+  /// and zoom) — reachable from the "Full Screen" action above the
+  /// embedded viewer.
+  void _openPdfFullScreen(String url) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => PdfViewerScreen(
@@ -135,26 +141,29 @@ class _LessonScreenState extends State<LessonScreen> {
                 const Icon(Icons.menu_book_rounded, color: kGold, size: 20),
           ),
           const SizedBox(width: 10),
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'RevEduc',
-                style: TextStyle(
-                  color: kGold,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'RevEduc',
+                  style: TextStyle(
+                    color: kGold,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
-              Text(
-                'Lesson',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
+                Text(
+                  'Lesson',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -176,15 +185,31 @@ class _LessonScreenState extends State<LessonScreen> {
     final pdfUrl = (lesson['pdfUrl'] as String?) ?? '';
     final hasPdf = pdfUrl.isNotEmpty;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildLessonInfo(lesson),
+        Expanded(
+          child: hasPdf
+              ? _buildPdfSection(pdfUrl)
+              : _buildTextOnlyBody(lesson),
+        ),
+      ],
+    );
+  }
+
+  /// Title + completion badge — shown above whichever content area
+  /// (PDF or fallback text) is rendered below it.
+  Widget _buildLessonInfo(Map<String, dynamic> lesson) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             lesson['title'] as String,
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 20,
               fontWeight: FontWeight.w900,
               color: primaryTextColor(context),
               fontFamily: 'Georgia',
@@ -215,34 +240,117 @@ class _LessonScreenState extends State<LessonScreen> {
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
 
-          if (hasPdf) ...[
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 46,
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => _openPdf(pdfUrl),
-                icon: const Icon(Icons.picture_as_pdf_rounded, color: kMaroon),
-                label: const Text(
-                  'View Original PDF',
-                  style: TextStyle(
-                    color: kMaroon,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
+  /// Primary reading experience for a lesson published from a PDF:
+  /// the real document, rendered page-by-page in its original format
+  /// — not a plain-text extraction. The viewer fills the remaining
+  /// screen and scrolls/zooms on its own; actions (full screen, mark
+  /// complete, quiz) are pinned in a bar underneath so they're always
+  /// reachable no matter how far the user has scrolled into the PDF.
+  Widget _buildPdfSection(String pdfUrl) {
+    return Column(
+      children: [
+        Expanded(
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 20),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Theme.of(context).dividerColor),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: SfPdfViewer.network(
+              pdfUrl,
+              controller: _pdfController,
+              canShowScrollHead: true,
+              canShowScrollStatus: true,
+              enableDoubleTapZooming: true,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _openPdfFullScreen(pdfUrl),
+                  icon: const Icon(Icons.fullscreen_rounded, color: kMaroon),
+                  label: const Text(
+                    'Full Screen',
+                    style: TextStyle(
+                      color: kMaroon,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
                   ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: kMaroon, width: 1.4),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(28),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: kMaroon, width: 1.4),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                 ),
               ),
-            ),
-          ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _controller.isCompleted
+                      ? null
+                      : _controller.markComplete,
+                  icon: Icon(_controller.isCompleted
+                      ? Icons.check
+                      : Icons.check_circle_outline),
+                  label: Text(
+                    _controller.isCompleted ? 'Completed' : 'Mark Complete',
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _controller.isCompleted
+                        ? Colors.grey.shade400
+                        : kMaroon,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    elevation: 2,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: ExamActionButton(
+            label: _controller.hasQuiz
+                ? 'Take Competency Quiz'
+                : 'No Quiz Available Yet',
+            onPressed: _controller.hasQuiz ? _openQuiz : null,
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
 
-          const SizedBox(height: 20),
+  /// Fallback for lessons published without a source PDF (e.g. a
+  /// legacy .doc upload) — the only case where the plain-text
+  /// `content` field is shown at all.
+  Widget _buildTextOnlyBody(Map<String, dynamic> lesson) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -263,17 +371,20 @@ class _LessonScreenState extends State<LessonScreen> {
             ),
           ),
           const SizedBox(height: 24),
-
           SizedBox(
             height: 50,
             child: ElevatedButton.icon(
-              onPressed: _controller.isCompleted ? null : _controller.markComplete,
+              onPressed:
+                  _controller.isCompleted ? null : _controller.markComplete,
               icon: Icon(_controller.isCompleted
                   ? Icons.check
                   : Icons.check_circle_outline),
               label: Text(
-                _controller.isCompleted ? 'Marked as Complete' : 'Mark as Complete',
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                _controller.isCompleted
+                    ? 'Marked as Complete'
+                    : 'Mark as Complete',
+                style: const TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor:
@@ -287,7 +398,6 @@ class _LessonScreenState extends State<LessonScreen> {
             ),
           ),
           const SizedBox(height: 12),
-
           const ActionDivider(),
           ExamActionButton(
             label: _controller.hasQuiz

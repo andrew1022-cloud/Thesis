@@ -25,6 +25,23 @@ class LessonController extends ChangeNotifier {
     isLoading = true;
     notifyListeners();
 
+    // Always refresh this subject's lessons from Firestore first —
+    // relying on whatever's already cached locally is what silently
+    // hides a lesson's `pdfUrl`. If an admin published (or
+    // re-published, e.g. attaching a PDF for the first time) after
+    // this device last synced, the local SQLite row can still be the
+    // old text-only version, so the screen falls back to the plain
+    // extracted text even though a real PDF now exists. Since this
+    // is a single lesson doc read, the sync is cheap and keeps the
+    // "original PDF" view actually current.
+    try {
+      await _db.syncLessonsForSubject(subjectId);
+    } catch (e) {
+      // Offline, or Firestore unreachable — fall back to whatever is
+      // already cached locally rather than blocking the screen.
+      debugPrint('LessonController: failed to sync lesson data: $e');
+    }
+
     final results = await Future.wait([
       _db.getLessonById(lessonId),
       _db.getCompletedLessonIdsForSubject(uid, subjectId),
