@@ -56,6 +56,9 @@ class QuizBuilder {
   }
 
   /// Picks up to [count] questions from [pool] following [kDifficultyMix].
+  /// The returned list is shuffled, so the picked questions don't come
+  /// back grouped by difficulty (all Easy, then all Moderate, ...) —
+  /// every call produces a fresh, randomly ordered set.
   static List<QuestionRow> pickByDifficulty(List<QuestionRow> pool, int count) {
     final target = min(count, pool.length);
     if (target <= 0) return [];
@@ -98,6 +101,12 @@ class QuizBuilder {
       bucket.removeRange(0, take);
       missing -= take;
     }
+
+    // Without this, questions always come back sorted by difficulty
+    // bucket (Easy first, then Moderate, then Difficult) even though
+    // each bucket was individually shuffled — shuffle the combined
+    // list so the final question order is fully randomized too.
+    picked.shuffle(_rng);
     return picked;
   }
 

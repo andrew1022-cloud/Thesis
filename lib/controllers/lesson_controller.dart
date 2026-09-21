@@ -50,9 +50,13 @@ class LessonController extends ChangeNotifier {
 
     // Always refresh this subject's lessons from Firestore first, so a
     // freshly (re)published PDF's version/chunk count is picked up
-    // instead of a stale cached row.
+    // instead of a stale cached row. Also sync this lesson's quiz
+    // questions — without this, the local `quiz_questions` cache can
+    // be empty even when a quiz has been published, which made the
+    // "Take Competency Quiz" button appear permanently locked.
     try {
       await _db.syncLessonsForSubject(subjectId);
+      await _db.syncQuizForLesson(subjectId, lessonId);
     } catch (e) {
       // Offline, or Firestore unreachable — fall back to whatever is
       // already cached locally rather than blocking the screen.

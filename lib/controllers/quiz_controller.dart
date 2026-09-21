@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 import '../data/assessment_config.dart';
@@ -58,6 +60,39 @@ class QuizQuestionData {
   }
 }
 
+/// Randomly re-assigns which option letter (A/B/C/D) each answer text
+/// sits under, so — for example — a choice stored as "optionC" in the
+/// CSV bank might display as "A" this time and "D" next time. Works on
+/// the raw row (before [QuizQuestionData.fromRow]) so it applies no
+/// matter which mode/pool the question came from.
+///
+/// Shuffles indices rather than the option texts themselves, so
+/// duplicate option text doesn't break which one is marked correct.
+QuestionRow _shuffleOptionPositions(QuestionRow row, Random rng) {
+  const letters = ['A', 'B', 'C', 'D'];
+  final originalTexts = [
+    row['optionA'],
+    row['optionB'],
+    row['optionC'],
+    row['optionD'],
+  ];
+
+  final correctLetter = (row['correctOption'] as String).toUpperCase();
+  final correctIndex = letters.indexOf(correctLetter);
+  // Malformed/unrecognized correctOption — leave the row untouched
+  // rather than risk losing track of the right answer.
+  if (correctIndex == -1) return row;
+
+  final newOrder = List<int>.generate(letters.length, (i) => i)..shuffle(rng);
+
+  final shuffledRow = Map<String, dynamic>.from(row);
+  for (var i = 0; i < letters.length; i++) {
+    shuffledRow['option${letters[i]}'] = originalTexts[newOrder[i]];
+  }
+  shuffledRow['correctOption'] = letters[newOrder.indexOf(correctIndex)];
+  return shuffledRow;
+}
+
 /// Holds all state for the Quiz screen. Required fields per [mode]:
 /// - competency  → [subjectId] + [lessonId]
 /// - topic       → [subjectId]
@@ -65,9 +100,11 @@ class QuizQuestionData {
 /// - mockExam    → nothing extra
 ///
 /// Every call to [loadQuiz] (including "Retake") draws a fresh random
-/// set of questions.
+/// set of questions, in a fresh random order, with each question's
+/// answer choices shuffled into fresh random positions.
 class QuizController extends ChangeNotifier {
   final LocalDbService _db = LocalDbService.instance;
+  final Random _rng = Random();
 
   final QuizMode mode;
   final String uid;
@@ -157,7 +194,12 @@ class QuizController extends ChangeNotifier {
       rows = await _buildQuestionSet();
     }
 
-    questions = rows.map(QuizQuestionData.fromRow).toList();
+    // Randomize which letter (A/B/C/D) each option displays under,
+    // per question, per attempt — independent of the question order
+    // itself (which QuizBuilder already randomizes).
+    questions = rows
+        .map((r) => QuizQuestionData.fromRow(_shuffleOptionPositions(r, _rng)))
+        .toList();
     currentIndex = 0;
     selectedAnswers.clear();
     isSubmitted = false;
