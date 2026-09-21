@@ -156,6 +156,40 @@ class QuizProgressLabel extends StatelessWidget {
   }
 }
 
+/// Per-question countdown (e.g. "0:45") shown beside the progress
+/// label. Turns red once 10 seconds or less remain, as a visual
+/// warning that the question is about to auto-advance.
+class QuizTimerLabel extends StatelessWidget {
+  final int secondsRemaining;
+
+  const QuizTimerLabel({super.key, required this.secondsRemaining});
+
+  @override
+  Widget build(BuildContext context) {
+    final isLow = secondsRemaining <= 10;
+    final minutes = secondsRemaining ~/ 60;
+    final seconds = secondsRemaining % 60;
+    final label = '$minutes:${seconds.toString().padLeft(2, '0')}';
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.timer_outlined,
+            size: 16, color: isLow ? Colors.red : kMaroon),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            color: isLow ? Colors.red : kMaroon,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// The maroon score card shown after submitting a quiz.
 class QuizResultSummaryCard extends StatelessWidget {
   final int score;

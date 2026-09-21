@@ -15,6 +15,11 @@ import '../widgets/quiz_widgets.dart';
 ///   (pass [categoryCode]: 'GE' | 'PE' | 'SP').
 /// - [QuizMode.mockExam]    → 450 questions across all categories.
 ///
+/// Every question carries its own 60-second countdown (see
+/// [QuizController.secondsPerQuestion]) shown next to the progress
+/// label; running out of time auto-advances to the next question or
+/// auto-submits on the last one.
+///
 /// Pops with `true` if taking it changed a lesson's completion status,
 /// so the screen behind it knows to refresh.
 class QuizScreen extends StatefulWidget {
@@ -210,9 +215,18 @@ class _QuizScreenState extends State<QuizScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          QuizProgressLabel(
-            currentIndex: _controller.currentIndex,
-            total: _controller.questions.length,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: QuizProgressLabel(
+                  currentIndex: _controller.currentIndex,
+                  total: _controller.questions.length,
+                ),
+              ),
+              const SizedBox(width: 12),
+              QuizTimerLabel(secondsRemaining: _controller.secondsRemaining),
+            ],
           ),
           if (_controller.isShort) ...[
             const SizedBox(height: 6),

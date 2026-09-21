@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -102,6 +103,12 @@ QuestionRow _shuffleOptionPositions(QuestionRow row, Random rng) {
 /// Every call to [loadQuiz] (including "Retake") draws a fresh random
 /// set of questions, in a fresh random order, with each question's
 /// answer choices shuffled into fresh random positions.
+///
+/// Every question also carries its own [secondsPerQuestion]-second
+/// countdown (see [secondsRemaining]). When time runs out on a
+/// question, the quiz auto-advances to the next one — or auto-submits
+/// if it was the last one — regardless of whether the question had
+/// been answered yet.
 class QuizController extends ChangeNotifier {
   final LocalDbService _db = LocalDbService.instance;
   final Random _rng = Random();
@@ -127,6 +134,12 @@ class QuizController extends ChangeNotifier {
   /// via its competency quiz. Only applies to [QuizMode.competency].
   static const int passingPercent = 70;
 
+  /// How long the user has to answer each question before it
+  /// auto-advances (or auto-submits, on the last question). Applies
+  /// uniformly to every assessment type (competency, topic, subject
+  /// exam, mock exam).
+  static const int secondsPerQuestion = 60;
+
   bool isLoading = true;
   List<QuizQuestionData> questions = [];
 
@@ -136,6 +149,11 @@ class QuizController extends ChangeNotifier {
   bool isSubmitted = false;
   bool isSubmitting = false;
   int score = 0;
+
+  Timer? _questionTimer;
+  int secondsRemaining = secondsPerQuestion;
+
+  bool _disposed = false;
 
   // Only try to pull a missing question bank from Firestore once per
   // screen visit, so "Retake" on a genuinely small bank doesn't hit
@@ -206,7 +224,56 @@ class QuizController extends ChangeNotifier {
     score = 0;
 
     isLoading = false;
+    if (questions.isNotEmpty) {
+      _startQuestionTimer();
+    } else {
+      _cancelTimer();
+    }
     notifyListeners();
+  }
+
+  // ---------------------------------------------------------------
+  // Per-question timer
+  // ---------------------------------------------------------------
+
+  void _cancelTimer() {
+    _questionTimer?.cancel();
+    _questionTimer = null;
+  }
+
+  /// Resets the countdown for the current question and starts ticking
+  /// it down, one second at a time.
+  void _startQuestionTimer() {
+    _cancelTimer();
+    if (questions.isEmpty || isSubmitted) return;
+
+    secondsRemaining = secondsPerQuestion;
+    _questionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (secondsRemaining <= 1) {
+        timer.cancel();
+        _questionTimer = null;
+        secondsRemaining = 0;
+        notifyListeners();
+        _handleTimeUp();
+      } else {
+        secondsRemaining--;
+        notifyListeners();
+      }
+    });
+  }
+
+  /// Time's up on the current question: move on automatically (left
+  /// unanswered if the user hadn't picked yet), or submit the quiz if
+  /// this was the last question.
+  void _handleTimeUp() {
+    if (isSubmitted) return;
+    if (isLastQuestion) {
+      submitQuiz();
+    } else {
+      currentIndex++;
+      _startQuestionTimer();
+      notifyListeners();
+    }
   }
 
   // ---------------------------------------------------------------
@@ -299,12 +366,14 @@ class QuizController extends ChangeNotifier {
   void nextQuestion() {
     if (!canGoNext) return;
     currentIndex++;
+    _startQuestionTimer();
     notifyListeners();
   }
 
   void previousQuestion() {
     if (!canGoPrevious) return;
     currentIndex--;
+    _startQuestionTimer();
     notifyListeners();
   }
 
@@ -315,6 +384,7 @@ class QuizController extends ChangeNotifier {
   Future<bool> submitQuiz() async {
     if (questions.isEmpty || isSubmitting) return false;
 
+    _cancelTimer();
     isSubmitting = true;
     notifyListeners();
 
@@ -345,5 +415,19 @@ class QuizController extends ChangeNotifier {
     isSubmitted = true;
     notifyListeners();
     return lessonNewlyCompleted;
+  }
+
+  // The screen can be popped while a timer tick is still pending;
+  // don't notify (or keep ticking) a disposed controller.
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _cancelTimer();
+    super.dispose();
   }
 }
