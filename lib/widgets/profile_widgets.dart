@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../controllers/profile_controller.dart';
 import 'home_widgets.dart'
     show kMaroon, kGold, labelColorFor, primaryTextColor, secondaryTextColor;
+import 'medal_widgets.dart';
 
 // ── User info row (avatar + username + email) ─────────────────────────────────
 
@@ -246,25 +247,14 @@ class _BadgeIcon extends StatelessWidget {
           width: 56,
           height: 56,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _defaultCircle(),
+          errorBuilder: (_, __, ___) => _medal(),
         ),
       );
     }
-    return _defaultCircle();
+    return _medal();
   }
 
-  Widget _defaultCircle() {
-    return Container(
-      width: 56,
-      height: 56,
-      decoration: BoxDecoration(
-        color: kGold.withValues(alpha: 0.2),
-        shape: BoxShape.circle,
-        border: Border.all(color: kGold, width: 2),
-      ),
-      child: Icon(_fallbackIcon(), color: kGold, size: 28),
-    );
-  }
+  Widget _medal() => MedalIcon(size: 56, icon: _fallbackIcon());
 }
 
 // ── Menu buttons ──────────────────────────────────────────────────────────

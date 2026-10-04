@@ -9,6 +9,7 @@ import '../services/local_db_service.dart';
 import '../services/notification_service.dart';
 import '../services/seed_service.dart';
 import '../widgets/home_widgets.dart';
+import '../widgets/medal_widgets.dart';
 import '../widgets/profile_widgets.dart';
 import 'analytics_screen.dart';
 import 'auth_screen.dart';
@@ -229,6 +230,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  // ── Dev-only: preview the badge-unlock popup + medal animation ─────────
+  int _medalDemoIndex = 0;
+
+  Future<void> _simulateMedalUnlock() async {
+    const demos = [
+      ('Gen Ed Master', Icons.menu_book_rounded),
+      ('ProfEd Pro', Icons.school_rounded),
+      ('Animation Ace', Icons.movie_creation_rounded),
+      ('7-Day Streak', Icons.local_fire_department_rounded),
+    ];
+    final demo = demos[_medalDemoIndex % demos.length];
+    _medalDemoIndex++;
+    await showMedalUnlocked(context, label: demo.$1, icon: demo.$2);
+  }
+
   @override
   Widget build(BuildContext context) {
     _controller.attachContext(context);
@@ -416,6 +432,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               icon: Icons.notifications_active_rounded,
               label: 'Test Notification',
               onTap: _testNotification,
+            ),
+            const SizedBox(height: 16),
+            ProfileMenuButton(
+              icon: Icons.military_tech_rounded,
+              label: 'Simulate Badge Unlock',
+              onTap: _simulateMedalUnlock,
             ),
           ],
 

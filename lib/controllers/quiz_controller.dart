@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../data/assessment_config.dart';
 import '../data/curriculum_data.dart';
+import '../services/achievement_service.dart';
 import '../services/local_db_service.dart';
 import '../services/quiz_builder.dart';
 
@@ -409,6 +410,25 @@ class QuizController extends ChangeNotifier {
         lessonId: lessonId!,
       );
       lessonNewlyCompleted = true;
+    }
+
+    // A passing Topic Quiz (this mode) combined with every competency
+    // in the subject already being complete earns a Topic Mastery
+    // badge — AchievementService checks both conditions and is a
+    // no-op if the badge was already awarded. See AchievementService
+    // for the exact threshold and what gets written/notified.
+    if (mode == QuizMode.topic && subjectId != null) {
+      final scorePercent =
+          questions.isEmpty ? 0.0 : (score / questions.length) * 100;
+      try {
+        await AchievementService.instance.checkAndAwardTopicMastery(
+          uid: uid,
+          subjectId: subjectId!,
+          scorePercent: scorePercent,
+        );
+      } catch (e) {
+        debugPrint('QuizController: achievement check failed: $e');
+      }
     }
 
     isSubmitting = false;

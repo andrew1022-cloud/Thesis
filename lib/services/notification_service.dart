@@ -32,6 +32,10 @@ class _ReminderCopy {
 /// then, because opening the app cancels and reschedules the whole
 /// ladder from scratch.
 ///
+/// This service also fires immediate, non-scheduled notifications —
+/// e.g. [showAchievementNotification] for badge celebrations — using
+/// the exact same branded styling as the reminder ladder.
+///
 /// Notifications are styled to match RevEduc's brand: a maroon accent
 /// color, an expandable "big text" body so the full message is
 /// readable without opening the app, and the app's launcher icon as
@@ -471,6 +475,34 @@ class NotificationService {
   /// — use on full logout if you don't want a signed-out device to
   /// still nag about a review streak.
   Future<void> cancelAll() => _plugin.cancelAll();
+
+  /// Fires an immediate (non-scheduled) local notification, using the
+  /// same branded card style as the reminder ladder above. Intended
+  /// for one-off celebratory moments — e.g. AchievementService uses
+  /// this to announce a newly earned badge — rather than anything
+  /// tied to inactivity.
+  ///
+  /// [notificationId] is the caller's responsibility to keep unique
+  /// and stable per "thing" being announced (e.g. derived from a
+  /// badge id), so re-showing the same achievement later updates the
+  /// same notification instead of stacking duplicates.
+  Future<void> showAchievementNotification({
+    required String title,
+    required String body,
+    required int notificationId,
+  }) async {
+    if (!_initialized) await init();
+    try {
+      await _plugin.show(
+        notificationId,
+        title,
+        body,
+        await _brandedDetails(title: title, body: body),
+      );
+    } catch (e) {
+      debugPrint('NotificationService: achievement notification failed: $e');
+    }
+  }
 
   /// Dev/debug helper — fires a single test notification immediately,
   /// so tapping its button in the UI shows the styled notification
