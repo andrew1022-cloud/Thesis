@@ -8,6 +8,7 @@ import '../data/curriculum_data.dart';
 import '../services/achievement_service.dart';
 import '../services/local_db_service.dart';
 import '../services/quiz_builder.dart';
+import '../services/score_comparison_service.dart';
 
 /// Which assessment is being taken.
 enum QuizMode {
@@ -151,6 +152,10 @@ class QuizController extends ChangeNotifier {
   bool isSubmitting = false;
   int score = 0;
 
+  /// Comparison of this attempt against earlier attempts of the same
+  /// quiz. Set in [submitQuiz]; null until then (or if it failed).
+  ScoreComparison? comparison;
+
   Timer? _questionTimer;
   int secondsRemaining = secondsPerQuestion;
 
@@ -223,6 +228,7 @@ class QuizController extends ChangeNotifier {
     selectedAnswers.clear();
     isSubmitted = false;
     score = 0;
+    comparison = null;
 
     isLoading = false;
     if (questions.isNotEmpty) {
@@ -393,9 +399,32 @@ class QuizController extends ChangeNotifier {
         .where((q) => selectedAnswers[q.id] == q.correctOption)
         .length;
 
+    // Subject exams have no subjectId, so store the category code
+    // there. That lets each category's exam (GE/PE/SP) be compared
+    // separately from the others.
+    final attemptSubjectId = subjectId ?? categoryCode;
+
+    // Fetch earlier attempts BEFORE inserting this one, so the
+    // current attempt isn't compared against itself.
+    try {
+      final previous = await _db.getPreviousAttemptsForComparison(
+        uid: uid,
+        quizType: quizType,
+        subjectId: attemptSubjectId,
+        lessonId: lessonId,
+      );
+      comparison = ScoreComparison.from(
+        score: score,
+        total: questions.length,
+        previous: previous,
+      );
+    } catch (e) {
+      debugPrint('QuizController: score comparison failed: $e');
+    }
+
     await _db.insertQuizAttempt(
       uid: uid,
-      subjectId: subjectId,
+      subjectId: attemptSubjectId,
       lessonId: lessonId,
       quizType: quizType,
       score: score,

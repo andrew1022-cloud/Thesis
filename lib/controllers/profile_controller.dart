@@ -3,7 +3,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../main.dart' show themeNotifier;
+import '../screens/account_settings_screen.dart';
 import '../screens/calendar_screen.dart';
+import '../screens/help_center_screen.dart';
+import '../screens/settings_screen.dart';
 
 /// A single badge earned by the user.
 class UserBadge {
@@ -90,8 +93,12 @@ class ProfileController extends ChangeNotifier {
   }
 
   // ── Menu actions ───────────────────────────────────────────────────────────
-  void goToAccount() {
-    debugPrint('Account tapped');
+  Future<void> goToAccount() async {
+    if (_context == null) return;
+    await Navigator.of(_context!).push(
+      MaterialPageRoute(builder: (_) => const AccountSettingsScreen()),
+    );
+    await loadProfile(); // pick up a changed username
   }
 
   void goToCalendar() {
@@ -102,11 +109,17 @@ class ProfileController extends ChangeNotifier {
   }
 
   void goToSettings() {
-    debugPrint('Settings tapped');
+    if (_context == null) return;
+    Navigator.of(_context!).push(
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+    );
   }
 
   void goToHelp() {
-    debugPrint('Help tapped');
+    if (_context == null) return;
+    Navigator.of(_context!).push(
+      MaterialPageRoute(builder: (_) => const HelpCenterScreen()),
+    );
   }
 
   @override

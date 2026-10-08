@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../controllers/quiz_controller.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/quiz_widgets.dart';
+import '../widgets/score_comparison_widgets.dart';
 
 /// Takes an assessment. What it contains depends on [mode]:
 /// - [QuizMode.competency]  → 5 questions from one lesson
@@ -351,6 +352,10 @@ class _QuizScreenState extends State<QuizScreen> {
             total: _controller.questions.length,
             passed: _controller.passed,
           ),
+          if (_controller.comparison != null) ...[
+            const SizedBox(height: 14),
+            ScoreComparisonCard(comparison: _controller.comparison!),
+          ],
           if (_controller.isCompetencyQuiz) ...[
             const SizedBox(height: 10),
             Text(
