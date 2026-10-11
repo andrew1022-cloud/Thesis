@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../services/local_db_service.dart';
-import '../services/weekly_leaderboard_db.dart';
 
 /// One row in the Strongest/Weakest Competency lists.
 class CompetencyStat {
@@ -68,18 +67,6 @@ class AnalyticsController extends ChangeNotifier {
   List<LeaderboardEntry> leaderboardTop = [];
   LeaderboardEntry? currentUserEntry;
 
-  // Weekly leaderboard (resets every Monday).
-  List<LeaderboardEntry> weeklyTop = [];
-  LeaderboardEntry? weeklyMe;
-
-  /// True when loading the weekly board FAILED (offline, or Firestore
-  /// rules blocking leaderboards/{week}/entries) — as opposed to it
-  /// simply being empty because nobody has earned points yet.
-  bool weeklyLoadFailed = false;
-
-  /// Time left until the weekly leaderboard resets.
-  Duration get weeklyResetIn => LocalDbService.timeUntilWeeklyReset();
-
   Future<void> loadAnalytics() async {
     isLoading = true;
     notifyListeners();
@@ -129,39 +116,6 @@ class AnalyticsController extends ChangeNotifier {
       points: me['points'] as int,
       isCurrentUser: true,
     );
-
-    // Weekly board is best-effort: a failure here (offline, rules not
-    // yet updated) must not break the rest of the Analytics screen.
-    weeklyLoadFailed = false;
-    try {
-      final weekly = await Future.wait([
-        _db.getWeeklyLeaderboardTopWithTotals(limit: 5),
-        _db.getUserWeeklyPointsAndRankWithTotal(uid),
-      ]);
-      weeklyTop = (weekly[0] as List<Map<String, dynamic>>)
-          .map((r) => LeaderboardEntry(
-                rank: r['rank'] as int,
-                name: r['username'] as String,
-                points: r['points'] as int,
-                totalPoints: r['totalPoints'] as int?,
-                uid: r['uid'] as String,
-              ))
-          .toList();
-      final w = weekly[1] as Map<String, dynamic>;
-      weeklyMe = LeaderboardEntry(
-        rank: w['rank'] as int,
-        name: w['username'] as String,
-        points: w['points'] as int,
-        totalPoints: w['totalPoints'] as int?,
-        isCurrentUser: true,
-        uid: uid,
-      );
-    } catch (e) {
-      debugPrint('AnalyticsController: weekly leaderboard failed: $e');
-      weeklyTop = [];
-      weeklyMe = null;
-      weeklyLoadFailed = true;
-    }
 
     isLoading = false;
     notifyListeners();

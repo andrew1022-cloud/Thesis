@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import 'offline_pdf_store.dart';
+
 /// LessonPdfService
 /// ----------------
 /// Stores and loads lesson PDFs using Firestore only (no Firebase
@@ -24,6 +26,12 @@ import 'package:flutter/foundation.dart';
 /// Because the version is part of every chunk's doc id, re-publishing
 /// a lesson can never mix old and new chunks, and any copy cached on
 /// the device for an older version is simply never asked for again.
+///
+/// Loading order for students:
+///   1. in-memory cache
+///   2. the user's offline downloads (OfflinePdfStore)
+///   3. Firestore (on-device cache, then server)
+///   4. if Firestore fails, whatever version is saved offline
 class LessonPdfService {
   LessonPdfService._internal();
   static final LessonPdfService instance = LessonPdfService._internal();
@@ -36,6 +44,7 @@ class LessonPdfService {
   static const int maxPdfBytes = 10 * 1024 * 1024;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final OfflinePdfStore _offline = OfflinePdfStore.instance;
 
   /// Recently opened PDFs, so re-opening a lesson (or coming back from
   /// the quiz) doesn't hit Firestore again.
@@ -105,8 +114,8 @@ class LessonPdfService {
   // USER SIDE — load
   // =================================================================
 
-  /// Downloads and reassembles the PDF. Returns null if any chunk is
-  /// missing/unreadable (e.g. offline and never opened before).
+  /// Returns the PDF bytes, or null if it can't be had from anywhere
+  /// (e.g. offline and never downloaded / opened before).
   Future<Uint8List?> loadPdf({
     required String subjectId,
     required String lessonId,
@@ -119,9 +128,74 @@ class LessonPdfService {
     final cached = _memoryCache[cacheKey];
     if (cached != null) return cached;
 
+    // 2) Explicit offline download of this exact version.
+    try {
+      final saved = await _offline.loadPdf(lessonId, version);
+      if (saved != null) {
+        _remember(cacheKey, saved);
+        return saved;
+      }
+    } catch (e) {
+      debugPrint('LessonPdfService: offline store read failed: $e');
+    }
+
+    // 3) Firestore (on-device cache first, then server).
+    final bytes = await _assemble(
+      subjectId: subjectId,
+      lessonId: lessonId,
+      version: version,
+      chunkCount: chunkCount,
+      serverOnly: false,
+    );
+    if (bytes != null) {
+      _remember(cacheKey, bytes);
+      return bytes;
+    }
+
+    // 4) Couldn't reach Firestore — an older downloaded copy is better
+    //    than nothing.
+    try {
+      return await _offline.loadLatestPdf(lessonId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Always fetches from the SERVER (never the on-device cache), so a
+  /// download reflects what is currently published. Used by the offline
+  /// download feature. Returns null if any chunk can't be fetched.
+  Future<Uint8List?> downloadFromServer({
+    required String subjectId,
+    required String lessonId,
+    required int version,
+    required int chunkCount,
+  }) {
+    return _assemble(
+      subjectId: subjectId,
+      lessonId: lessonId,
+      version: version,
+      chunkCount: chunkCount,
+      serverOnly: true,
+    );
+  }
+
+  void _remember(String key, Uint8List bytes) {
+    _memoryCache[key] = bytes;
+    while (_memoryCache.length > _memoryCacheLimit) {
+      _memoryCache.remove(_memoryCache.keys.first);
+    }
+  }
+
+  Future<Uint8List?> _assemble({
+    required String subjectId,
+    required String lessonId,
+    required int version,
+    required int chunkCount,
+    required bool serverOnly,
+  }) async {
     final parts = await Future.wait([
       for (var i = 0; i < chunkCount; i++)
-        _fetchChunk(subjectId, lessonId, version, i),
+        _fetchChunk(subjectId, lessonId, version, i, serverOnly),
     ]);
     if (parts.any((p) => p == null)) return null;
 
@@ -129,13 +203,7 @@ class LessonPdfService {
     for (final part in parts) {
       builder.add(part!);
     }
-    final bytes = builder.takeBytes();
-
-    _memoryCache[cacheKey] = bytes;
-    while (_memoryCache.length > _memoryCacheLimit) {
-      _memoryCache.remove(_memoryCache.keys.first);
-    }
-    return bytes;
+    return builder.takeBytes();
   }
 
   /// Tries Firestore's on-device cache first (free, instant, works
@@ -146,20 +214,26 @@ class LessonPdfService {
     String lessonId,
     int version,
     int index,
+    bool serverOnly,
   ) async {
     final ref = _chunks(subjectId, lessonId).doc(chunkId(version, index));
 
     DocumentSnapshot<Map<String, dynamic>>? snap;
-    try {
-      final fromCache = await ref.get(const GetOptions(source: Source.cache));
-      if (fromCache.exists) snap = fromCache;
-    } catch (_) {
-      // Not in the local cache — fall through to the server.
+
+    if (!serverOnly) {
+      try {
+        final fromCache = await ref.get(const GetOptions(source: Source.cache));
+        if (fromCache.exists) snap = fromCache;
+      } catch (_) {
+        // Not in the local cache — fall through to the server.
+      }
     }
 
     if (snap == null) {
       try {
-        snap = await ref.get();
+        snap = serverOnly
+            ? await ref.get(const GetOptions(source: Source.server))
+            : await ref.get();
       } catch (e) {
         debugPrint('LessonPdfService: failed to fetch chunk $index: $e');
         return null;

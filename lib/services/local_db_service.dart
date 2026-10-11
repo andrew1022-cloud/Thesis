@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'notes_db_service.dart';
@@ -842,7 +841,7 @@ class LocalDbService {
   }
 
   // =================================================================
-  // LEADERBOARD
+  // LEADERBOARD (all-time)
   // =================================================================
 
   Future<List<Map<String, dynamic>>> getLeaderboardTop({int limit = 5}) async {
@@ -882,104 +881,25 @@ class LocalDbService {
   }
 
   Future<void> incrementUserPoints(String uid, int delta) async {
-    final userRef = _firestore.collection('users').doc(uid);
-    await userRef.set(
+    await _firestore.collection('users').doc(uid).set(
       {'points': FieldValue.increment(delta)},
       SetOptions(merge: true),
     );
-
-    // Mirror the points into this week's leaderboard. A new week simply
-    // means a new document, so there is no reset job to run.
-    //
-    // Kept in its own try/catch so a failure here (most commonly
-    // Firestore rules that don't allow leaderboards/{week}/entries/{uid})
-    // is reported clearly instead of looking like the lifetime points
-    // write failed too.
-    try {
-      String name = 'Student';
-      try {
-        final snap = await userRef.get();
-        final u = snap.data()?['username'] as String?;
-        if (u != null && u.isNotEmpty) name = u;
-      } catch (_) {}
-      await _weeklyEntries(weekKeyFor(DateTime.now())).doc(uid).set(
-        {
-          'username': name,
-          'points': FieldValue.increment(delta),
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
-    } on FirebaseException catch (e) {
-      debugPrint('Weekly leaderboard write failed (${e.code}): ${e.message}. '
-          'If this is permission-denied, publish Firestore rules for '
-          'leaderboards/{week}/entries/{uid}.');
-    }
   }
 
   // =================================================================
-  // WEEKLY LEADERBOARD
+  // WEEK HELPER
   // =================================================================
-  // Stored at leaderboards/{weekKey}/entries/{uid}, where weekKey is the
-  // date (yyyy-MM-dd) of that week's Monday. Resets every Monday.
 
   /// Monday (local time) of the week containing [d], as yyyy-MM-dd.
+  /// Still used by weak-area quests and streak freezes, which both
+  /// work in Monday–Sunday weeks.
   static String weekKeyFor(DateTime d) {
     final monday = DateTime(d.year, d.month, d.day)
         .subtract(Duration(days: d.weekday - DateTime.monday));
     return '${monday.year.toString().padLeft(4, '0')}-'
         '${monday.month.toString().padLeft(2, '0')}-'
         '${monday.day.toString().padLeft(2, '0')}';
-  }
-
-  /// Time left until the weekly leaderboard resets (next Monday 00:00).
-  static Duration timeUntilWeeklyReset([DateTime? now]) {
-    final n = now ?? DateTime.now();
-    final nextMonday = DateTime(n.year, n.month, n.day)
-        .add(Duration(days: 8 - n.weekday));
-    return nextMonday.difference(n);
-  }
-
-  CollectionReference<Map<String, dynamic>> _weeklyEntries(String weekKey) =>
-      _firestore.collection('leaderboards').doc(weekKey).collection('entries');
-
-  Future<List<Map<String, dynamic>>> getWeeklyLeaderboardTop(
-      {int limit = 5}) async {
-    final snapshot = await _weeklyEntries(weekKeyFor(DateTime.now()))
-        .orderBy('points', descending: true)
-        .limit(limit)
-        .get();
-
-    return [
-      for (var i = 0; i < snapshot.docs.length; i++)
-        {
-          'rank': i + 1,
-          'uid': snapshot.docs[i].id,
-          'username': snapshot.docs[i].data()['username'] ?? 'Student',
-          'points': ((snapshot.docs[i].data()['points'] ?? 0) as num).toInt(),
-        },
-    ];
-  }
-
-  Future<Map<String, dynamic>> getUserWeeklyPointsAndRank(String uid) async {
-    final entries = _weeklyEntries(weekKeyFor(DateTime.now()));
-    final doc = await entries.doc(uid).get();
-    final points = ((doc.data()?['points'] ?? 0) as num).toInt();
-    var username = doc.data()?['username'] as String?;
-    if (username == null) {
-      final u = await _firestore.collection('users').doc(uid).get();
-      username = (u.data()?['username'] as String?) ?? 'You';
-    }
-
-    final higherCount =
-        await entries.where('points', isGreaterThan: points).count().get();
-
-    return {
-      'uid': uid,
-      'username': username,
-      'points': points,
-      'rank': (higherCount.count ?? 0) + 1,
-    };
   }
 
   // =================================================================
