@@ -1,4 +1,10 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:csv/csv.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -177,10 +183,62 @@ class AdminController extends ChangeNotifier {
     }
   }
 
-  /// Placeholder for the "Export" action — hook this up to a CSV/
-  /// spreadsheet export once that's built out.
-  void exportUsers() {
-    debugPrint('Admin: Export tapped (${users.length} users)');
+  /// Exports the registered users' data as a CSV file and asks the
+  /// admin where to save it. Returns a message for the UI to show
+  /// (success, cancelled or failure).
+  Future<String> exportUsers() async {
+    if (users.isEmpty) return 'No user data to export.';
+
+    try {
+      final rows = <List<dynamic>>[
+        [
+          'Name',
+          'Email',
+          'General Education %',
+          'Professional Education %',
+          'Specialization %',
+          'Overall Completion %',
+          'Last Active',
+        ],
+        for (final u in users)
+          [
+            _csvSafe(u.name),
+            _csvSafe(u.email),
+            u.genEdPercent,
+            u.profEdPercent,
+            u.specializationPercent,
+            u.overallPercent,
+            _csvSafe(u.lastActiveLabel),
+          ],
+      ];
+
+      // UTF-8 BOM so Excel opens non-ASCII names correctly.
+      final bytes =
+          Uint8List.fromList([0xEF, 0xBB, 0xBF, ...utf8.encode(csv.encode(rows))]);
+      final fileName =
+          'reveduc_users_${DateFormat('yyyy-MM-dd').format(DateTime.now())}.csv';
+
+      final savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Export user data',
+        fileName: fileName,
+        bytes: bytes,
+        type: FileType.custom,
+        allowedExtensions: ['csv'],
+      );
+
+      // On web the download starts immediately and no path is returned.
+      if (savedPath == null && !kIsWeb) return 'Export cancelled.';
+      return 'Exported ${users.length} users to $fileName';
+    } catch (e) {
+      debugPrint('AdminController: export failed: $e');
+      return 'Export failed. Please try again.';
+    }
+  }
+
+  /// Prevents spreadsheet apps from treating text as a formula.
+  String _csvSafe(String value) {
+    if (value.isNotEmpty && '=+-@'.contains(value[0])) return "'$value";
+    return value;
   }
 
   Future<void> refresh() => loadAdminData();

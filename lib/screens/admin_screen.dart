@@ -205,7 +205,12 @@ class _AdminScreenState extends State<AdminScreen> {
                 ),
               ),
               TextButton(
-                onPressed: _controller.exportUsers,
+                onPressed: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  final message = await _controller.exportUsers();
+                  if (!mounted) return;
+                  messenger.showSnackBar(SnackBar(content: Text(message)));
+                },
                 style: TextButton.styleFrom(
                   padding: EdgeInsets.zero,
                   minimumSize: const Size(0, 0),
