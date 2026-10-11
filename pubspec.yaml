@@ -22,6 +22,8 @@ dependencies:
   sqflite: ^2.3.0
   path: ^1.9.0
   intl: ^0.19.0
+  # Remember Me: saves the "stay signed in" choice between launches.
+  shared_preferences: ^2.3.2
   file_picker: 10.3.10
   csv: ^8.0.0
   docx_to_text: ^1.0.1

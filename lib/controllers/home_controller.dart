@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../services/connectivity_service.dart';
 import '../services/local_db_fast.dart';
 import '../services/local_db_service.dart';
 import '../services/notification_service.dart';
@@ -44,6 +45,10 @@ class HomeController extends ChangeNotifier {
   Future<void> loadDashboard() async {
     isLoading = true;
     notifyListeners();
+
+    // Starts the online/offline detector (safe to call repeatedly).
+    // Powers the "You're offline" banner and the Offline Content screen.
+    ConnectivityService.instance.start();
 
     // 1) Local reads only — no network, no waiting on Firestore.
     await _loadStats();

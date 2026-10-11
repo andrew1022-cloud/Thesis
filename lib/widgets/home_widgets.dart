@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
+import 'offline_banner.dart';
+
 const Color kMaroon = Color(0xFF6E1B24);
 const Color kCream = Color(0xFFF5EDE3);
 const Color kGold = Color(0xFFC9A24B);
@@ -415,8 +417,9 @@ class ContinuePromptCard extends StatelessWidget {
   }
 }
 
-/// Static bottom navigation bar. Only Home is wired up for now — the
-/// other tabs are shown but disabled until those screens exist.
+/// Bottom navigation bar for the student flow. Shows the "You're
+/// offline" strip (see [OfflineBanner]) above the tabs whenever the
+/// app can't reach Firebase.
 class HomeBottomNavBar extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int>? onTap;
@@ -437,49 +440,55 @@ class HomeBottomNavBar extends StatelessWidget {
       (_NavItem(Icons.person_outline_rounded, 'Profile')),
     ];
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        boxShadow: isDark
-            ? []
-            : [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
-                  blurRadius: 8,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-      ),
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: List.generate(items.length, (index) {
-          final selected = index == currentIndex;
-          final item = items[index];
-          final color = selected
-              ? kMaroon
-              : (isDark ? Colors.white38 : Colors.grey.shade400);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const OfflineBanner(),
+        Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            boxShadow: isDark
+                ? []
+                : [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.06),
+                      blurRadius: 8,
+                      offset: const Offset(0, -2),
+                    ),
+                  ],
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: List.generate(items.length, (index) {
+              final selected = index == currentIndex;
+              final item = items[index];
+              final color = selected
+                  ? kMaroon
+                  : (isDark ? Colors.white38 : Colors.grey.shade400);
 
-          return InkWell(
-            onTap: onTap == null ? null : () => onTap!(index),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(item.icon, color: color, size: 24),
-                const SizedBox(height: 2),
-                Text(
-                  item.label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: color,
-                  ),
+              return InkWell(
+                onTap: onTap == null ? null : () => onTap!(index),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(item.icon, color: color, size: 24),
+                    const SizedBox(height: 2),
+                    Text(
+                      item.label,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: color,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          );
-        }),
-      ),
+              );
+            }),
+          ),
+        ),
+      ],
     );
   }
 }

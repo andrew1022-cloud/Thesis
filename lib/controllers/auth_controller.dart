@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import '../services/remember_me_service.dart';
+
 /// Holds all state and business logic for the Log-in / Sign-up screen.
 /// The UI (AuthScreen) only reads from this controller and calls its
 /// methods — it does not manage any state itself.
@@ -102,6 +104,9 @@ class AuthController extends ChangeNotifier {
   /// Returns true on success. On failure, [errorMessage] is set and
   /// listeners are notified so the UI can display it. On success,
   /// [isAdminLogin] is also set so the UI knows where to navigate.
+  ///
+  /// The "Remember Me" choice is saved here (see RememberMeService) so
+  /// StartupGate can skip the login screen on the next launch.
   Future<bool> login() async {
     final input = loginUsernameController.text.trim();
     final password = loginPasswordController.text;
@@ -131,6 +136,8 @@ class AuthController extends ChangeNotifier {
       );
 
       isAdminLogin = await _checkIsAdmin(credential.user!.uid);
+      await RememberMeService.instance
+          .save(remember: rememberMe, isAdmin: isAdminLogin);
 
       isLoading = false;
       notifyListeners();
@@ -231,6 +238,10 @@ class AuthController extends ChangeNotifier {
       // separately by creating an `admins/{uid}` doc.
       isAdminLogin = false;
 
+      // The sign-up form has no "Remember Me" box, so a brand-new
+      // account stays signed in on this device.
+      await RememberMeService.instance.save(remember: true, isAdmin: false);
+
       isLoading = false;
       notifyListeners();
       return true;
@@ -292,6 +303,10 @@ class AuthController extends ChangeNotifier {
       }
 
       isAdminLogin = await _checkIsAdmin(user.uid);
+
+      // No checkbox on the Google button, so stay signed in.
+      await RememberMeService.instance
+          .save(remember: true, isAdmin: isAdminLogin);
 
       isLoading = false;
       notifyListeners();

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
-import 'screens/auth_screen.dart';
+import 'screens/startup_gate.dart';
 import 'services/notification_service.dart';
 
 /// App-wide theme mode, toggled from the Profile screen's Dark Mode
@@ -36,7 +36,9 @@ class MyApp extends StatelessWidget {
           themeMode: mode,
           theme: _lightTheme,
           darkTheme: _darkTheme,
-          home: const AuthScreen(),
+          // StartupGate sends the user to Login, Home or Admin
+          // depending on a saved session + "Remember Me".
+          home: const StartupGate(),
         );
       },
     );

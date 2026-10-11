@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../services/lesson_pdf_service.dart';
 import '../services/local_db_service.dart';
+import '../services/offline_pdf_store.dart';
 import '../services/points_service.dart';
 
 /// Holds all state for the Lesson screen. The UI only reads from this
@@ -37,8 +38,6 @@ class LessonController extends ChangeNotifier {
   /// (offline and never opened before, Firestore error, ...).
   bool pdfLoadFailed = false;
 
-  // Read straight from the lesson doc in Firestore (not from the local
-  // SQLite cache), so this works without any local database migration.
   int _pdfChunkCount = 0;
   int _pdfVersion = 0;
 
@@ -52,9 +51,7 @@ class LessonController extends ChangeNotifier {
     // Always refresh this subject's lessons from Firestore first, so a
     // freshly (re)published PDF's version/chunk count is picked up
     // instead of a stale cached row. Also sync this lesson's quiz
-    // questions — without this, the local `quiz_questions` cache can
-    // be empty even when a quiz has been published, which made the
-    // "Take Competency Quiz" button appear permanently locked.
+    // questions.
     try {
       await _db.syncLessonsForSubject(subjectId);
       await _db.syncQuizForLesson(subjectId, lessonId);
@@ -75,7 +72,7 @@ class LessonController extends ChangeNotifier {
     isCompleted = completedIds.contains(lessonId);
     hasQuiz = (results[2] as List<Map<String, dynamic>>).isNotEmpty;
 
-    await _readPdfFieldsFromFirestore();
+    await _readPdfFields();
 
     // Opening the lesson is what powers "Continue by Subject" on Home.
     await _db.recordLessonOpened(
@@ -93,8 +90,12 @@ class LessonController extends ChangeNotifier {
   }
 
   /// Reads which PDF (if any) the admin published for this lesson.
-  /// Falls back to Firestore's on-device cache when offline.
-  Future<void> _readPdfFieldsFromFirestore() async {
+  ///
+  /// Firestore is asked first. If that fails (e.g. offline and this
+  /// lesson was never opened online), fall back to the PDF the user
+  /// saved through Offline Content, so downloaded lessons always show
+  /// their PDF with no connection.
+  Future<void> _readPdfFields() async {
     _pdfVersion = 0;
     _pdfChunkCount = 0;
     try {
@@ -109,13 +110,26 @@ class LessonController extends ChangeNotifier {
       _pdfChunkCount = (data?['pdfChunkCount'] as num?)?.toInt() ?? 0;
       debugPrint('Lesson PDF fields (Firestore): lessonId=$lessonId '
           'version=${data?['pdfVersion']} chunks=${data?['pdfChunkCount']}');
+      return;
     } catch (e) {
       debugPrint('LessonController: could not read PDF fields: $e');
     }
+
+    try {
+      final saved = await OfflinePdfStore.instance.getSavedPdf(lessonId);
+      if (saved != null) {
+        _pdfVersion = saved.version;
+        _pdfChunkCount = saved.chunks;
+        debugPrint('Lesson PDF fields (offline store): lessonId=$lessonId '
+            'version=${saved.version} chunks=${saved.chunks}');
+      }
+    } catch (e) {
+      debugPrint('LessonController: offline PDF lookup failed: $e');
+    }
   }
 
-  /// Downloads the lesson's PDF from Firestore. Also used by the
-  /// "Try again" button when the first attempt fails.
+  /// Loads the lesson's PDF (offline download first, then Firestore).
+  /// Also used by the "Try again" button when the first attempt fails.
   Future<void> loadPdf() async {
     if (!hasPdf) {
       pdfBytes = null;
