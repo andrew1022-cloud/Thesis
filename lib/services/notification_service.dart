@@ -115,6 +115,9 @@ class NotificationService {
     }
   }
 
+  /// Rasterization scale for the card PNG (layout is designed at 1000x500).
+  static const double _cardScale = 0.5;
+
   /// Renders the fully custom "expanded" notification card as a PNG:
   /// maroon background, the real app logo in a badge, a Georgia
   /// title, and a Roboto body — matching the in-app maroon cards
@@ -137,6 +140,10 @@ class NotificationService {
       recorder,
       const ui.Rect.fromLTWH(0, 0, width, height),
     );
+    // Layout stays designed at 1000x500, but the PNG is rasterized at
+    // 500x250 — ~4x fewer pixels to render and push over the binder to
+    // the system UI, which was causing the jank on Home.
+    canvas.scale(_cardScale, _cardScale);
 
     // Background.
     canvas.drawRect(
@@ -233,7 +240,10 @@ class NotificationService {
     );
 
     final picture = recorder.endRecording();
-    final image = await picture.toImage(width.toInt(), height.toInt());
+    final image = await picture.toImage(
+      (width * _cardScale).toInt(),
+      (height * _cardScale).toInt(),
+    );
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
     final bytes = byteData!.buffer.asUint8List();
 

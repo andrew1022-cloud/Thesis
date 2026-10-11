@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/curriculum_data.dart';
+import '../services/local_db_fast.dart';
 import '../services/local_db_service.dart';
 
 /// One subject row on the Subjects screen, with its competency
@@ -33,28 +34,20 @@ class SubjectGroup {
   });
 }
 
-/// Holds all state for the Subjects screen. The UI only reads from
-/// this controller — it does not group or compute progress itself.
+/// Holds all state for the Subjects screen.
 ///
-/// The subject *list* itself is always built from [kFixedCurriculum]
-/// (the app's single source of truth for what subjects/competencies
-/// exist), not from whatever happens to already be synced down from
-/// Firestore. A subject only gets a Firestore doc once an admin has
-/// published at least one competency for it (see
-/// `ContentController._ensureSubjectDoc`) or "Seed Fixed Curriculum"
-/// has been run — so relying on the synced `subjects` table alone
-/// would silently hide any subject nothing has been published for
-/// yet (e.g. only 3 of 13 Specialization subjects showing up). Local
-/// data is still used for progress counts and for any metadata
-/// (colorHex, etc.) that has actually been synced.
-///
-/// Subject Exam / Mock Exam navigation lives in SubjectScreen, which
-/// opens QuizScreen with the matching QuizMode.
+/// The subject list is built from [kFixedCurriculum]. Progress is read
+/// with three grouped SQLite queries (lesson counts, completed counts,
+/// subject metadata) instead of several queries — and a Firestore call
+/// for every unpublished subject — per subject, which is what made this
+/// screen slow.
 class SubjectController extends ChangeNotifier {
   final LocalDbService _db = LocalDbService.instance;
   final String uid;
 
   SubjectController({required this.uid});
+
+  bool _disposed = false;
 
   bool isLoading = true;
 
@@ -63,6 +56,33 @@ class SubjectController extends ChangeNotifier {
   Future<void> loadSubjects() async {
     isLoading = true;
     notifyListeners();
+
+    var lessonCounts = await _db.getLessonCountsBySubject();
+
+    // Fresh install / cleared cache: nothing local yet, so do ONE sync
+    // (not one per subject). After that, local reads are instant.
+    if (lessonCounts.isEmpty) {
+      try {
+        await _db.syncAllFast(force: true);
+        lessonCounts = await _db.getLessonCountsBySubject();
+      } catch (e) {
+        debugPrint('SubjectController: initial sync failed: $e');
+      }
+    }
+
+    groups = await _buildGroups(lessonCounts);
+    isLoading = false;
+    notifyListeners();
+
+    // Quietly pick up newly published content (throttled), and rebuild
+    // only if something actually changed.
+    _backgroundRefresh(lessonCounts);
+  }
+
+  Future<List<SubjectGroup>> _buildGroups(
+      Map<String, int> lessonCounts) async {
+    final completedCounts = await _db.getCompletedCountsBySubject(uid);
+    final cachedSubjects = await _db.getSubjectsById();
 
     final newGroups = <SubjectGroup>[];
 
@@ -73,31 +93,17 @@ class SubjectController extends ChangeNotifier {
         final curriculumSubject = category.subjects[s];
         final subjectId = curriculumSubjectId(category.code, s);
 
-        // Make sure this subject's lessons are synced locally if
-        // they haven't been yet — cheap no-op once cached.
-        var total = await _db.getLessonCountForSubject(subjectId);
-        if (total == 0) {
-          await _db.syncLessonsForSubject(subjectId);
-          total = await _db.getLessonCountForSubject(subjectId);
-        }
-
-        // If nothing has been published/synced for this subject at
-        // all yet, fall back to the curriculum's own competency count
-        // so it reads "0 out of 13", not the misleading "0 out of 0".
+        final total = lessonCounts[subjectId] ?? 0;
+        // Nothing published for this subject yet: use the curriculum's
+        // own competency count so it reads "0 out of 13", not "0 out of 0".
         final totalCount =
             total > 0 ? total : curriculumSubject.competencies.length;
 
-        final completed =
-            await _db.getCompletedLessonCountForSubject(uid, subjectId);
+        final completed = completedCounts[subjectId] ?? 0;
         final percent =
             totalCount == 0 ? 0 : ((completed / totalCount) * 100).round();
 
-        // Use the synced Firestore metadata if we have it (real
-        // colorHex, description, etc.); otherwise build a minimal
-        // stand-in straight from curriculum data so the subject still
-        // renders correctly.
-        final cachedSubject = await _db.getSubjectById(subjectId);
-        final subjectMap = cachedSubject ??
+        final subjectMap = cachedSubjects[subjectId] ??
             {
               'id': subjectId,
               'name': curriculumSubject.name,
@@ -120,15 +126,41 @@ class SubjectController extends ChangeNotifier {
       ));
     }
 
-    groups = newGroups;
-    isLoading = false;
+    return newGroups;
+  }
+
+  Future<void> _backgroundRefresh(Map<String, int> before) async {
+    try {
+      await _db.syncAllFast();
+      if (_disposed) return;
+      final after = await _db.getLessonCountsBySubject();
+      if (after.toString() == before.toString()) return;
+      groups = await _buildGroups(after);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('SubjectController: background sync failed: $e');
+    }
+  }
+
+  /// Pull-to-refresh: force a real sync, then rebuild from the cache.
+  Future<void> refresh() async {
+    try {
+      await _db.syncAllFast(force: true);
+    } catch (e) {
+      debugPrint('SubjectController: refresh sync failed: $e');
+    }
+    groups = await _buildGroups(await _db.getLessonCountsBySubject());
     notifyListeners();
   }
 
-  /// Pull-to-refresh: sync fresh content from Firestore first, then
-  /// rebuild the subject list from the updated local cache.
-  Future<void> refresh() async {
-    await _db.syncAll();
-    await loadSubjects();
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }
