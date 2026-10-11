@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../controllers/quiz_controller.dart';
 import '../widgets/home_widgets.dart';
+import '../widgets/medal_widgets.dart';
 import '../widgets/quiz_widgets.dart';
 import '../widgets/score_comparison_widgets.dart';
 
@@ -105,6 +106,11 @@ class _QuizScreenState extends State<QuizScreen> {
     // Result is shown inline; lessonChanged is reported when the user
     // taps "Done" below via Navigator.pop(context, lessonChanged).
     _pendingResult = lessonChanged;
+
+    final badge = _controller.newBadgeLabel;
+    if (badge != null && mounted) {
+      await showMedalUnlocked(context, label: badge);
+    }
   }
 
   bool _pendingResult = false;
@@ -352,6 +358,21 @@ class _QuizScreenState extends State<QuizScreen> {
             total: _controller.questions.length,
             passed: _controller.passed,
           ),
+          if (_controller.pointsEarned > 0) ...[
+            const SizedBox(height: 14),
+            _PointsEarnedBanner(points: _controller.pointsEarned),
+          ],
+          if (_controller.comparison != null &&
+              !_controller.comparison!.isFirstAttempt) ...[
+            const SizedBox(height: 14),
+            Text(
+              'Points are only awarded on your first attempt.',
+              style: TextStyle(
+                fontSize: 12,
+                color: secondaryTextColor(context),
+              ),
+            ),
+          ],
           if (_controller.comparison != null) ...[
             const SizedBox(height: 14),
             ScoreComparisonCard(comparison: _controller.comparison!),
@@ -476,6 +497,41 @@ class _QuizScreenState extends State<QuizScreen> {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// "+N points" banner shown on the quiz result screen.
+class _PointsEarnedBanner extends StatelessWidget {
+  final int points;
+
+  const _PointsEarnedBanner({required this.points});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: kMaroon,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.stars_rounded, color: kGold, size: 28),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '+$points points earned',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
         ],
       ),
     );

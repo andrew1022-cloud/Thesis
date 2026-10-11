@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 
 import 'local_db_service.dart';
 import 'notification_service.dart';
+import 'points_service.dart';
 
 /// AchievementService
 /// ------------------
@@ -48,20 +49,21 @@ class AchievementService {
   /// quiz submission — does nothing if the score is below the
   /// threshold, not every competency is complete yet, or the badge
   /// was already earned.
-  Future<void> checkAndAwardTopicMastery({
+  /// Returns the badge label if it was newly awarded, otherwise null.
+  Future<String?> checkAndAwardTopicMastery({
     required String uid,
     required String subjectId,
     required double scorePercent,
   }) async {
-    if (scorePercent < topicMasteryPassingPercent) return;
+    if (scorePercent < topicMasteryPassingPercent) return null;
 
     try {
       final totalCount = await _localDb.getLessonCountForSubject(subjectId);
-      if (totalCount == 0) return; // nothing published for this subject yet
+      if (totalCount == 0) return null; // nothing published for this subject yet
 
       final completedCount =
           await _localDb.getCompletedLessonCountForSubject(uid, subjectId);
-      if (completedCount < totalCount) return; // not all competencies done
+      if (completedCount < totalCount) return null; // not all competencies done
 
       final badgeId = _badgeIdFor(subjectId);
       final badgeRef = _firestore
@@ -71,7 +73,7 @@ class AchievementService {
           .doc(badgeId);
 
       final existing = await badgeRef.get();
-      if (existing.exists) return; // already earned — no duplicate award
+      if (existing.exists) return null; // already earned — no duplicate award
 
       final subject = await _localDb.getSubjectById(subjectId);
       final subjectName = (subject?['name'] as String?) ?? 'Topic';
@@ -87,14 +89,18 @@ class AchievementService {
         'earnedAt': FieldValue.serverTimestamp(),
       });
 
+      PointsService.instance.award(uid, PointsService.topicMasteryBonus);
+
       await NotificationService.instance.showAchievementNotification(
         title: 'Achievement unlocked! 🏆',
         body: 'You mastered $subjectName — every competency completed '
             'with a passing Topic Quiz score.',
         notificationId: _notificationIdFor(badgeId),
       );
+      return '$subjectName Mastery';
     } catch (e) {
       debugPrint('AchievementService: topic mastery check failed: $e');
+      return null;
     }
   }
 }

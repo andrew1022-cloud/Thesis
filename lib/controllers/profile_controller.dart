@@ -53,7 +53,7 @@ class ProfileController extends ChangeNotifier {
         final data = userDoc.data()!;
         username = (data['username'] as String?) ?? '';
         email = (data['email'] as String?) ?? email_;
-        points = (data['points'] as int?) ?? 0;
+        points = (data['points'] as num?)?.toInt() ?? 0;
       } else {
         email = email_;
       }

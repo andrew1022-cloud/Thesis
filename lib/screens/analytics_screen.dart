@@ -17,6 +17,9 @@ class AnalyticsScreen extends StatefulWidget {
 }
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
+  /// Leaderboard tab: true = this week, false = all time.
+  bool _weekly = true;
+
   late final AnalyticsController _controller;
 
   @override
@@ -169,6 +172,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             ),
           ),
           const SizedBox(height: 12),
+          _buildLeaderboardToggle(),
+          const SizedBox(height: 12),
           _buildLeaderboard(),
           const SizedBox(height: 12),
         ],
@@ -281,9 +286,50 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
+  Widget _buildLeaderboardToggle() {
+    Widget chip(String label, bool weekly) => Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: ChoiceChip(
+            label: Text(label),
+            selected: _weekly == weekly,
+            selectedColor: kMaroon,
+            labelStyle: TextStyle(
+              color: _weekly == weekly ? Colors.white : primaryTextColor(context),
+              fontWeight: FontWeight.w700,
+            ),
+            onSelected: (_) => setState(() => _weekly = weekly),
+          ),
+        );
+
+    final reset = _controller.weeklyResetIn;
+    final resetText = reset.inDays >= 1
+        ? 'Resets in ${reset.inDays}d ${reset.inHours % 24}h'
+        : 'Resets in ${reset.inHours}h ${reset.inMinutes % 60}m';
+
+    return Row(
+      children: [
+        chip('This Week', true),
+        chip('All Time', false),
+        const Spacer(),
+        if (_weekly)
+          Text(
+            resetText,
+            style: TextStyle(color: secondaryTextColor(context), fontSize: 12),
+          ),
+      ],
+    );
+  }
+
   Widget _buildLeaderboard() {
-    final entries = _controller.leaderboardTop;
-    final me = _controller.currentUserEntry;
+    final entries = _weekly ? _controller.weeklyTop : _controller.leaderboardTop;
+    final me = _weekly ? _controller.weeklyMe : _controller.currentUserEntry;
+
+    if (_weekly && entries.isEmpty) {
+      return Text(
+        'No points earned this week yet. Take a quiz to claim the top spot!',
+        style: TextStyle(color: secondaryTextColor(context), fontSize: 13),
+      );
+    }
 
     if (entries.isEmpty && me == null) {
       return Text(
@@ -294,15 +340,19 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
     // Don't show the current user's own row twice if they're already
     // sitting inside the top list under their own name.
-    final meAlreadyShown =
-        me != null && entries.any((e) => e.rank == me.rank && e.points == me.points);
+    final meAlreadyShown = me != null &&
+        (_weekly
+            ? entries.any((e) => e.uid == me.uid)
+            : entries.any((e) => e.rank == me.rank && e.points == me.points));
 
     return LeaderboardCard(
       topRows: entries
           .map((e) =>
               LeaderboardRow(rank: e.rank, name: e.name, points: e.points))
           .toList(),
-      currentUserRow: (me == null || meAlreadyShown)
+      currentUserRow: (me == null ||
+              meAlreadyShown ||
+              (_weekly && me.points == 0))
           ? null
           : LeaderboardRow(
               rank: me.rank,

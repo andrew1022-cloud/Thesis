@@ -29,7 +29,10 @@ class LeaderboardEntry {
     required this.name,
     required this.points,
     this.isCurrentUser = false,
+    this.uid,
   });
+
+  final String? uid;
 }
 
 /// Holds all state for the Analytics screen. The UI only reads from
@@ -58,6 +61,13 @@ class AnalyticsController extends ChangeNotifier {
 
   List<LeaderboardEntry> leaderboardTop = [];
   LeaderboardEntry? currentUserEntry;
+
+  // Weekly leaderboard (resets every Monday).
+  List<LeaderboardEntry> weeklyTop = [];
+  LeaderboardEntry? weeklyMe;
+
+  /// Time left until the weekly leaderboard resets.
+  Duration get weeklyResetIn => LocalDbService.timeUntilWeeklyReset();
 
   Future<void> loadAnalytics() async {
     isLoading = true;
@@ -108,6 +118,35 @@ class AnalyticsController extends ChangeNotifier {
       points: me['points'] as int,
       isCurrentUser: true,
     );
+
+    // Weekly board is best-effort: a failure here (offline, rules not
+    // yet updated) must not break the rest of the Analytics screen.
+    try {
+      final weekly = await Future.wait([
+        _db.getWeeklyLeaderboardTop(limit: 5),
+        _db.getUserWeeklyPointsAndRank(uid),
+      ]);
+      weeklyTop = (weekly[0] as List<Map<String, dynamic>>)
+          .map((r) => LeaderboardEntry(
+                rank: r['rank'] as int,
+                name: r['username'] as String,
+                points: r['points'] as int,
+                uid: r['uid'] as String,
+              ))
+          .toList();
+      final w = weekly[1] as Map<String, dynamic>;
+      weeklyMe = LeaderboardEntry(
+        rank: w['rank'] as int,
+        name: w['username'] as String,
+        points: w['points'] as int,
+        isCurrentUser: true,
+        uid: uid,
+      );
+    } catch (e) {
+      debugPrint('AnalyticsController: weekly leaderboard failed: $e');
+      weeklyTop = [];
+      weeklyMe = null;
+    }
 
     isLoading = false;
     notifyListeners();

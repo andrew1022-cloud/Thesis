@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../services/lesson_pdf_service.dart';
 import '../services/local_db_service.dart';
+import '../services/points_service.dart';
 
 /// Holds all state for the Lesson screen. The UI only reads from this
 /// controller — it does not touch LocalDbService directly.
@@ -154,6 +155,7 @@ class LessonController extends ChangeNotifier {
       lessonId: lessonId,
     );
     isCompleted = true;
+    PointsService.instance.award(uid, PointsService.lessonCompletePoints);
     notifyListeners();
   }
 

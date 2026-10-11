@@ -7,6 +7,7 @@ import '../data/assessment_config.dart';
 import '../data/curriculum_data.dart';
 import '../services/achievement_service.dart';
 import '../services/local_db_service.dart';
+import '../services/points_service.dart';
 import '../services/quiz_builder.dart';
 import '../services/score_comparison_service.dart';
 
@@ -155,6 +156,13 @@ class QuizController extends ChangeNotifier {
   /// Comparison of this attempt against earlier attempts of the same
   /// quiz. Set in [submitQuiz]; null until then (or if it failed).
   ScoreComparison? comparison;
+
+  /// Points awarded for the attempt just submitted (quiz + first-time
+  /// lesson completion + any badge bonus). 0 until submitted.
+  int pointsEarned = 0;
+
+  /// Label of a badge unlocked by this submission, if any.
+  String? newBadgeLabel;
 
   Timer? _questionTimer;
   int secondsRemaining = secondsPerQuestion;
@@ -406,8 +414,9 @@ class QuizController extends ChangeNotifier {
 
     // Fetch earlier attempts BEFORE inserting this one, so the
     // current attempt isn't compared against itself.
+    var previous = <Map<String, dynamic>>[];
     try {
-      final previous = await _db.getPreviousAttemptsForComparison(
+      previous = await _db.getPreviousAttemptsForComparison(
         uid: uid,
         quizType: quizType,
         subjectId: attemptSubjectId,
@@ -431,8 +440,19 @@ class QuizController extends ChangeNotifier {
       totalItems: questions.length,
     );
 
+    var earned = PointsService.quizPointsToAward(
+      quizType: quizType,
+      score: score,
+      total: questions.length,
+      previous: previous,
+    );
+
     var lessonNewlyCompleted = false;
     if (isCompetencyQuiz && passed) {
+      final alreadyDone =
+          (await _db.getCompletedLessonIdsForSubject(uid, subjectId!))
+              .contains(lessonId);
+      if (!alreadyDone) earned += PointsService.lessonCompletePoints;
       await _db.markLessonCompleted(
         uid: uid,
         subjectId: subjectId!,
@@ -450,15 +470,23 @@ class QuizController extends ChangeNotifier {
       final scorePercent =
           questions.isEmpty ? 0.0 : (score / questions.length) * 100;
       try {
-        await AchievementService.instance.checkAndAwardTopicMastery(
+        newBadgeLabel =
+            await AchievementService.instance.checkAndAwardTopicMastery(
           uid: uid,
           subjectId: subjectId!,
           scorePercent: scorePercent,
         );
+        if (newBadgeLabel != null) earned += PointsService.topicMasteryBonus;
       } catch (e) {
         debugPrint('QuizController: achievement check failed: $e');
       }
     }
+
+    // The topic-mastery bonus is awarded inside AchievementService;
+    // only quiz + lesson points are awarded here.
+    final bonus = newBadgeLabel != null ? PointsService.topicMasteryBonus : 0;
+    PointsService.instance.award(uid, earned - bonus);
+    pointsEarned = earned;
 
     isSubmitting = false;
     isSubmitted = true;
