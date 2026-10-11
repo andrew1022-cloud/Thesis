@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../controllers/analytics_controller.dart';
+import '../data/level_data.dart';
 import '../widgets/analytics_widgets.dart';
 import '../widgets/home_widgets.dart';
 import 'home_screen.dart';
@@ -347,8 +348,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
     return LeaderboardCard(
       topRows: entries
-          .map((e) =>
-              LeaderboardRow(rank: e.rank, name: e.name, points: e.points))
+          .map((e) => LeaderboardRow(
+                rank: e.rank,
+                name: e.name,
+                points: e.points,
+                levelTitle: levelForPoints(e.levelPoints).title,
+              ))
           .toList(),
       currentUserRow: (me == null ||
               meAlreadyShown ||
@@ -358,6 +363,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               rank: me.rank,
               name: me.name,
               points: me.points,
+              levelTitle: levelForPoints(me.levelPoints).title,
               highlighted: true,
             ),
     );

@@ -1,43 +1,66 @@
 import 'package:flutter/material.dart';
 
 import '../controllers/profile_controller.dart';
+import '../data/level_data.dart';
+import '../data/unlockable_data.dart';
 import 'home_widgets.dart'
     show kMaroon, kGold, labelColorFor, primaryTextColor, secondaryTextColor;
+import 'level_widgets.dart';
 import 'medal_widgets.dart';
+import 'rewards_widgets.dart';
 
-// ── User info row (avatar + username + email) ─────────────────────────────────
+// ── User info row (avatar + username + email + level) ─────────────────────────
 
 class UserInfoRow extends StatelessWidget {
   final String username;
   final String email;
 
+  /// Total points. When set, the user's level badge is shown under
+  /// the email.
+  final int? points;
+
+  /// Equipped avatar frame / flair (see unlockable_data.dart).
+  final Unlockable? frame;
+  final Unlockable? flair;
+
   const UserInfoRow({
     super.key,
     required this.username,
     required this.email,
+    this.points,
+    this.frame,
+    this.flair,
   });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(
-          width: 56,
-          height: 56,
-          decoration: const BoxDecoration(
-            color: kMaroon,
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(Icons.person, color: Colors.white, size: 30),
-        ),
+        FramedAvatar(size: 56, frame: frame),
         const SizedBox(width: 16),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _InfoLine(label: 'Username:', value: username),
-            const SizedBox(height: 4),
-            _InfoLine(label: 'Email:', value: email),
-          ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _InfoLine(label: 'Username:', value: username),
+              const SizedBox(height: 4),
+              _InfoLine(label: 'Email:', value: email),
+              if (points != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    if (flair != null) ...[
+                      FlairIcon(flair: flair!),
+                      const SizedBox(width: 8),
+                    ],
+                    Flexible(
+                      child: LevelBadge(level: levelForPoints(points!)),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
         ),
       ],
     );
@@ -76,7 +99,7 @@ class _InfoLine extends StatelessWidget {
   }
 }
 
-// ── User Ledger card (maroon, points + badges) ────────────────────────────────
+// ── User Ledger card (maroon, points + level + badges) ────────────────────────
 // Always sits on a maroon background by design, so its inner colors
 // (gold/white) stay brand-constant across light and dark theme.
 
@@ -138,6 +161,29 @@ class UserLedgerCard extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 10),
+
+          // Level row + progress to next level
+          Row(
+            children: [
+              const Text(
+                'Level: ',
+                style: TextStyle(
+                  color: kGold,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              Flexible(
+                child: LevelBadge(
+                  level: levelForPoints(points),
+                  onMaroon: true,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          LevelProgressBar(points: points),
           const SizedBox(height: 16),
 
           // Badges label

@@ -2,10 +2,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../data/level_data.dart';
+import '../data/unlockable_data.dart';
 import '../main.dart' show themeNotifier;
 import '../screens/account_settings_screen.dart';
 import '../screens/calendar_screen.dart';
 import '../screens/help_center_screen.dart';
+import '../screens/rewards_screen.dart';
 import '../screens/settings_screen.dart';
 
 /// A single badge earned by the user.
@@ -36,6 +39,27 @@ class ProfileController extends ChangeNotifier {
   int points = 0;
   List<UserBadge> badges = [];
 
+  // Equipped cosmetics (ids stored on users/{uid}).
+  String? equippedFrameId;
+  String? equippedFlairId;
+
+  /// The equipped frame, only if it's still unlocked at the user's
+  /// current level (null = no frame).
+  Unlockable? get equippedFrame =>
+      _equippedIfUnlocked(equippedFrameId, UnlockableType.frame);
+
+  /// The equipped flair, or null if none is equipped.
+  Unlockable? get equippedFlair {
+    final u = _equippedIfUnlocked(equippedFlairId, UnlockableType.flair);
+    return (u == null || u.icon == null) ? null : u;
+  }
+
+  Unlockable? _equippedIfUnlocked(String? id, UnlockableType type) {
+    final u = unlockableById(id);
+    if (u == null || u.type != type) return null;
+    return u.requiredLevel <= levelForPoints(points).number ? u : null;
+  }
+
   Future<void> loadProfile() async {
     isLoading = true;
     notifyListeners();
@@ -54,6 +78,8 @@ class ProfileController extends ChangeNotifier {
         username = (data['username'] as String?) ?? '';
         email = (data['email'] as String?) ?? email_;
         points = (data['points'] as num?)?.toInt() ?? 0;
+        equippedFrameId = data['equippedFrame'] as String?;
+        equippedFlairId = data['equippedFlair'] as String?;
       } else {
         email = email_;
       }
@@ -99,6 +125,14 @@ class ProfileController extends ChangeNotifier {
       MaterialPageRoute(builder: (_) => const AccountSettingsScreen()),
     );
     await loadProfile(); // pick up a changed username
+  }
+
+  Future<void> goToRewards() async {
+    if (_context == null) return;
+    await Navigator.of(_context!).push(
+      MaterialPageRoute(builder: (_) => const RewardsScreen()),
+    );
+    await loadProfile(); // pick up a newly equipped frame / flair
   }
 
   void goToCalendar() {

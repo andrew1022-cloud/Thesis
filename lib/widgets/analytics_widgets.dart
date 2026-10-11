@@ -103,11 +103,13 @@ class CompetencyBulletRow extends StatelessWidget {
   }
 }
 
-/// One ranked row inside the leaderboard card.
+/// One ranked row inside the leaderboard card. [levelTitle] (e.g.
+/// "Competent Reviewee") is shown under the name when provided.
 class LeaderboardRow extends StatelessWidget {
   final int rank;
   final String name;
   final int points;
+  final String? levelTitle;
   final bool highlighted;
 
   const LeaderboardRow({
@@ -115,6 +117,7 @@ class LeaderboardRow extends StatelessWidget {
     required this.rank,
     required this.name,
     required this.points,
+    this.levelTitle,
     this.highlighted = false,
   });
 
@@ -143,13 +146,27 @@ class LeaderboardRow extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: Text(
-              name,
-              style: TextStyle(
-                color: textColor,
-                fontWeight: FontWeight.w800,
-                fontSize: 14,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: TextStyle(
+                    color: textColor,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                ),
+                if (levelTitle != null)
+                  Text(
+                    levelTitle!,
+                    style: TextStyle(
+                      color: textColor.withOpacity(0.8),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 11,
+                    ),
+                  ),
+              ],
             ),
           ),
           Text(

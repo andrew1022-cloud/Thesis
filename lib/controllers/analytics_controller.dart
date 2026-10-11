@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/local_db_service.dart';
+import '../services/weekly_leaderboard_db.dart';
 
 /// One row in the Strongest/Weakest Competency lists.
 class CompetencyStat {
@@ -23,6 +24,7 @@ class LeaderboardEntry {
   final String name;
   final int points;
   final bool isCurrentUser;
+  final int? totalPoints; // lifetime points; falls back to [points]
 
   LeaderboardEntry({
     required this.rank,
@@ -30,9 +32,13 @@ class LeaderboardEntry {
     required this.points,
     this.isCurrentUser = false,
     this.uid,
+    this.totalPoints,
   });
 
   final String? uid;
+
+  /// Points used to work out the level (always lifetime points).
+  int get levelPoints => totalPoints ?? points;
 }
 
 /// Holds all state for the Analytics screen. The UI only reads from
@@ -123,14 +129,15 @@ class AnalyticsController extends ChangeNotifier {
     // yet updated) must not break the rest of the Analytics screen.
     try {
       final weekly = await Future.wait([
-        _db.getWeeklyLeaderboardTop(limit: 5),
-        _db.getUserWeeklyPointsAndRank(uid),
+        _db.getWeeklyLeaderboardTopWithTotals(limit: 5),
+        _db.getUserWeeklyPointsAndRankWithTotal(uid),
       ]);
       weeklyTop = (weekly[0] as List<Map<String, dynamic>>)
           .map((r) => LeaderboardEntry(
                 rank: r['rank'] as int,
                 name: r['username'] as String,
                 points: r['points'] as int,
+                totalPoints: r['totalPoints'] as int?,
                 uid: r['uid'] as String,
               ))
           .toList();
@@ -139,6 +146,7 @@ class AnalyticsController extends ChangeNotifier {
         rank: w['rank'] as int,
         name: w['username'] as String,
         points: w['points'] as int,
+        totalPoints: w['totalPoints'] as int?,
         isCurrentUser: true,
         uid: uid,
       );
