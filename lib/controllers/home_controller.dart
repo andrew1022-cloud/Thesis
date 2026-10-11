@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../services/local_db_fast.dart';
 import '../services/local_db_service.dart';
 import '../services/notification_service.dart';
+import '../services/streak_freeze_db.dart';
+import '../services/weak_area_quest_db.dart';
 
 /// Holds all state for the Home dashboard. The UI only reads from
 /// this controller — it does not compute any stats itself.
@@ -35,6 +37,10 @@ class HomeController extends ChangeNotifier {
   /// null if the user hasn't opened anything yet.
   Map<String, dynamic>? lastOpenedLesson;
 
+  /// Weak-area quests for the user's weakest competencies (empty when
+  /// they have none).
+  List<WeakAreaQuest> weakAreaQuests = [];
+
   Future<void> loadDashboard() async {
     isLoading = true;
     notifyListeners();
@@ -52,7 +58,7 @@ class HomeController extends ChangeNotifier {
   Future<void> _loadStats() async {
     final results = await Future.wait([
       _db.getOverallProgressPercent(uid),
-      _db.getDayStreak(uid),
+      _db.getDayStreakWithFreeze(uid),
       _db.getCompletedLessonCount(uid),
       _db.getAverageScorePercent(uid),
       _db.getContinueBySubjectFast(uid),
@@ -65,6 +71,14 @@ class HomeController extends ChangeNotifier {
     final allSubjects = results[4] as List<Map<String, dynamic>>;
     continueBySubject = _topThreePerCategory(allSubjects);
     lastOpenedLesson = _lastOpenedUnfinished(allSubjects);
+
+    // Best-effort: quests must never break the rest of the dashboard.
+    try {
+      weakAreaQuests = await _db.getWeakAreaQuests(uid);
+    } catch (e) {
+      debugPrint('HomeController: weak-area quests failed: $e');
+      weakAreaQuests = [];
+    }
   }
 
   /// Categories shown on Home, in order, with how many subjects each.
@@ -126,7 +140,7 @@ class HomeController extends ChangeNotifier {
       // Log today's visit (local insert + Firestore write), then
       // refresh just the streak number.
       await _db.recordAppOpenedToday(uid);
-      dayStreak = await _db.getDayStreak(uid);
+      dayStreak = await _db.getDayStreakWithFreeze(uid);
       notifyListeners();
 
       unawaited(_db.pushPendingSyncs(uid));

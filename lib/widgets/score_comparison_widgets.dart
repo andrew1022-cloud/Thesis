@@ -4,6 +4,44 @@ import '../services/score_comparison_service.dart';
 import 'home_widgets.dart'
     show kMaroon, kGold, primaryTextColor, secondaryTextColor;
 
+/// "Score to beat" banner for retakes. Shown above the questions while
+/// the quiz is in progress.
+class ScoreToBeatBanner extends StatelessWidget {
+  /// Best percentage (0–100) from earlier attempts.
+  final int scoreToBeat;
+
+  const ScoreToBeatBanner({super.key, required this.scoreToBeat});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: kGold.withOpacity(0.18),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: kGold.withOpacity(0.6)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.flag_rounded, color: kMaroon, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Score to beat: $scoreToBeat%',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: primaryTextColor(context),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class ScoreComparisonCard extends StatelessWidget {
   final ScoreComparison comparison;
 
@@ -90,8 +128,9 @@ class ScoreComparisonCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Best earlier score: ${c.bestPercent}% · '
-              '${c.previousCount} earlier attempt'
+              'Score to beat was ${c.bestPercent}% — '
+              '${c.isNewBest ? 'you beat it!' : c.currentPercent == c.bestPercent ? 'you matched it.' : 'you fell short this time.'}'
+              ' · ${c.previousCount} earlier attempt'
               '${c.previousCount == 1 ? '' : 's'}',
               style: TextStyle(
                 fontSize: 11,

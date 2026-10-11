@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../controllers/home_controller.dart';
 import '../widgets/home_widgets.dart';
+import '../widgets/quest_widgets.dart';
 import 'analytics_screen.dart';
 import 'lesson_screen.dart';
 import 'profile_screen.dart';
@@ -238,6 +239,40 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 24),
+
+          // ---- Weak-Area Quests (only when there is a weak area) ----
+          if (_controller.weakAreaQuests.isNotEmpty) ...[
+            Text(
+              'Weak-Area Quests',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: primaryTextColor(context),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Raise your weakest competencies for bonus points. '
+              'Resets every Monday.',
+              style: TextStyle(
+                fontSize: 12,
+                color: secondaryTextColor(context),
+              ),
+            ),
+            const SizedBox(height: 12),
+            for (final quest in _controller.weakAreaQuests)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: WeakAreaQuestCard(
+                  quest: quest,
+                  onTap: () => _resumeLesson({
+                    'subjectId': quest.subjectId,
+                    'lessonId': quest.lessonId,
+                  }),
+                ),
+              ),
+            const SizedBox(height: 14),
+          ],
 
           // ---- Continue by Subject ----
           Text(

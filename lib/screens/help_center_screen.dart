@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/weak_area_quest_db.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/settings_widgets.dart';
 
@@ -38,6 +39,15 @@ const List<_Faq> _faqs = [
     'Complete every competency under a subject, then score at least 75% on '
         "that subject's Topic Quiz. Badges appear in your User Ledger on the "
         'Profile screen.',
+  ),
+  _Faq(
+    'What are Weak-Area Quests?',
+    'Competencies where your average quiz score is below $kWeakAreaThresholdPercent% '
+        'show up on Home as quests. Score $kWeakAreaTargetPercent% or higher '
+        'on that competency quiz to earn a small bonus of '
+        '$kWeakAreaQuestPoints points, once per competency each week '
+        '(resets Monday). Normal quiz points still only come from your '
+        'first attempt.',
   ),
   _Faq(
     'How is my day streak counted?',

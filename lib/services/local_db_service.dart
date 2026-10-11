@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'notes_db_service.dart';
@@ -889,20 +890,31 @@ class LocalDbService {
 
     // Mirror the points into this week's leaderboard. A new week simply
     // means a new document, so there is no reset job to run.
-    String name = 'Student';
+    //
+    // Kept in its own try/catch so a failure here (most commonly
+    // Firestore rules that don't allow leaderboards/{week}/entries/{uid})
+    // is reported clearly instead of looking like the lifetime points
+    // write failed too.
     try {
-      final snap = await userRef.get();
-      final u = snap.data()?['username'] as String?;
-      if (u != null && u.isNotEmpty) name = u;
-    } catch (_) {}
-    await _weeklyEntries(weekKeyFor(DateTime.now())).doc(uid).set(
-      {
-        'username': name,
-        'points': FieldValue.increment(delta),
-        'updatedAt': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
+      String name = 'Student';
+      try {
+        final snap = await userRef.get();
+        final u = snap.data()?['username'] as String?;
+        if (u != null && u.isNotEmpty) name = u;
+      } catch (_) {}
+      await _weeklyEntries(weekKeyFor(DateTime.now())).doc(uid).set(
+        {
+          'username': name,
+          'points': FieldValue.increment(delta),
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    } on FirebaseException catch (e) {
+      debugPrint('Weekly leaderboard write failed (${e.code}): ${e.message}. '
+          'If this is permission-denied, publish Firestore rules for '
+          'leaderboards/{week}/entries/{uid}.');
+    }
   }
 
   // =================================================================

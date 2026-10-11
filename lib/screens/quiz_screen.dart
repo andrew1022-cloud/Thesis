@@ -246,6 +246,10 @@ class _QuizScreenState extends State<QuizScreen> {
               ),
             ),
           ],
+          if (_controller.scoreToBeat != null) ...[
+            const SizedBox(height: 12),
+            ScoreToBeatBanner(scoreToBeat: _controller.scoreToBeat!),
+          ],
           const SizedBox(height: 16),
           Text(
             question.questionText,
@@ -362,11 +366,26 @@ class _QuizScreenState extends State<QuizScreen> {
             const SizedBox(height: 14),
             _PointsEarnedBanner(points: _controller.pointsEarned),
           ],
+          if (_controller.questBonus > 0) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Weak-area quest complete: +${_controller.questBonus} bonus '
+              'points for lifting this competency.',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: secondaryTextColor(context),
+              ),
+            ),
+          ],
           if (_controller.comparison != null &&
               !_controller.comparison!.isFirstAttempt) ...[
             const SizedBox(height: 14),
             Text(
-              'Points are only awarded on your first attempt.',
+              _controller.questBonus > 0
+                  ? 'Regular quiz points are only awarded on your first '
+                      'attempt.'
+                  : 'Points are only awarded on your first attempt.',
               style: TextStyle(
                 fontSize: 12,
                 color: secondaryTextColor(context),

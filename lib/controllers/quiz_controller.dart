@@ -10,6 +10,7 @@ import '../services/local_db_service.dart';
 import '../services/points_service.dart';
 import '../services/quiz_builder.dart';
 import '../services/score_comparison_service.dart';
+import '../services/weak_area_quest_db.dart';
 
 /// Which assessment is being taken.
 enum QuizMode {
@@ -157,9 +158,18 @@ class QuizController extends ChangeNotifier {
   /// quiz. Set in [submitQuiz]; null until then (or if it failed).
   ScoreComparison? comparison;
 
+  /// Best percentage (0–100) the user has scored on earlier attempts of
+  /// this same quiz — the "score to beat" on a retake. Null on a first
+  /// attempt. Refreshed by every [loadQuiz], so after a retake it
+  /// already includes the attempt just finished.
+  int? scoreToBeat;
+
   /// Points awarded for the attempt just submitted (quiz + first-time
   /// lesson completion + any badge bonus). 0 until submitted.
   int pointsEarned = 0;
+
+  /// Weak-area quest points included in [pointsEarned] (0 if none).
+  int questBonus = 0;
 
   /// Label of a badge unlocked by this submission, if any.
   String? newBadgeLabel;
@@ -237,6 +247,8 @@ class QuizController extends ChangeNotifier {
     isSubmitted = false;
     score = 0;
     comparison = null;
+    questBonus = 0;
+    scoreToBeat = await _loadScoreToBeat();
 
     isLoading = false;
     if (questions.isNotEmpty) {
@@ -245,6 +257,32 @@ class QuizController extends ChangeNotifier {
       _cancelTimer();
     }
     notifyListeners();
+  }
+
+  /// Highest percentage across every earlier attempt of this quiz, or
+  /// null if there are none (or the lookup fails).
+  Future<int?> _loadScoreToBeat() async {
+    try {
+      final previous = await _db.getPreviousAttemptsForComparison(
+        uid: uid,
+        quizType: quizType,
+        // Subject exams store their category code in subjectId.
+        subjectId: subjectId ?? categoryCode,
+        lessonId: lessonId,
+        limit: 1000,
+      );
+      int? best;
+      for (final r in previous) {
+        final total = (r['totalItems'] as int?) ?? 0;
+        if (total <= 0) continue;
+        final pct = (((r['score'] as int?) ?? 0) / total * 100).round();
+        if (best == null || pct > best) best = pct;
+      }
+      return best;
+    } catch (e) {
+      debugPrint('QuizController: score-to-beat lookup failed: $e');
+      return null;
+    }
   }
 
   // ---------------------------------------------------------------
@@ -431,6 +469,23 @@ class QuizController extends ChangeNotifier {
       debugPrint('QuizController: score comparison failed: $e');
     }
 
+    // Weak-area quest bonus: a retake of one of the user's weakest
+    // competencies that reaches the target score. Checked BEFORE the
+    // attempt is inserted so this week's earlier attempts are what count.
+    questBonus = 0;
+    if (isCompetencyQuiz) {
+      try {
+        questBonus = await _db.weakAreaQuestBonus(
+          uid: uid,
+          lessonId: lessonId!,
+          score: score,
+          total: questions.length,
+        );
+      } catch (e) {
+        debugPrint('QuizController: quest check failed: $e');
+      }
+    }
+
     await _db.insertQuizAttempt(
       uid: uid,
       subjectId: attemptSubjectId,
@@ -446,6 +501,8 @@ class QuizController extends ChangeNotifier {
       total: questions.length,
       previous: previous,
     );
+
+    earned += questBonus;
 
     var lessonNewlyCompleted = false;
     if (isCompetencyQuiz && passed) {

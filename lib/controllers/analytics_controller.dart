@@ -72,6 +72,11 @@ class AnalyticsController extends ChangeNotifier {
   List<LeaderboardEntry> weeklyTop = [];
   LeaderboardEntry? weeklyMe;
 
+  /// True when loading the weekly board FAILED (offline, or Firestore
+  /// rules blocking leaderboards/{week}/entries) — as opposed to it
+  /// simply being empty because nobody has earned points yet.
+  bool weeklyLoadFailed = false;
+
   /// Time left until the weekly leaderboard resets.
   Duration get weeklyResetIn => LocalDbService.timeUntilWeeklyReset();
 
@@ -127,6 +132,7 @@ class AnalyticsController extends ChangeNotifier {
 
     // Weekly board is best-effort: a failure here (offline, rules not
     // yet updated) must not break the rest of the Analytics screen.
+    weeklyLoadFailed = false;
     try {
       final weekly = await Future.wait([
         _db.getWeeklyLeaderboardTopWithTotals(limit: 5),
@@ -154,6 +160,7 @@ class AnalyticsController extends ChangeNotifier {
       debugPrint('AnalyticsController: weekly leaderboard failed: $e');
       weeklyTop = [];
       weeklyMe = null;
+      weeklyLoadFailed = true;
     }
 
     isLoading = false;

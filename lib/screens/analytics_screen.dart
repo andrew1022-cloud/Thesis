@@ -325,6 +325,15 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     final entries = _weekly ? _controller.weeklyTop : _controller.leaderboardTop;
     final me = _weekly ? _controller.weeklyMe : _controller.currentUserEntry;
 
+    if (_weekly && _controller.weeklyLoadFailed) {
+      return Text(
+        "Couldn't load this week's leaderboard. Check your connection and "
+        'pull to refresh. If it keeps happening, the app may not have '
+        'permission to read it yet.',
+        style: TextStyle(color: secondaryTextColor(context), fontSize: 13),
+      );
+    }
+
     if (_weekly && entries.isEmpty) {
       return Text(
         'No points earned this week yet. Take a quiz to claim the top spot!',

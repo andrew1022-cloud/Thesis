@@ -324,6 +324,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           UserInfoRow(
             username: _controller.username,
             email: _controller.email,
+            points: _controller.points,
+            frame: _controller.equippedFrame,
+            flair: _controller.equippedFlair,
           ),
           const SizedBox(height: 20),
 
@@ -360,6 +363,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     builder: (_) => const ResultsHistoryScreen()),
               );
             },
+          ),
+          const SizedBox(height: 16),
+          ProfileMenuButton(
+            icon: Icons.card_giftcard_rounded,
+            label: 'Rewards',
+            onTap: _controller.goToRewards,
           ),
           const SizedBox(height: 16),
           ProfileMenuButton(
