@@ -501,30 +501,54 @@ class LocalDbService {
       'synced': 0,
     });
 
-    try {
-      final docRef = await _firestore
-          .collection('users')
-          .doc(uid)
-          .collection('quizAttempts')
-          .add({
-        'subjectId': subjectId,
-        'lessonId': lessonId,
-        'quizType': quizType,
-        'score': score,
-        'totalItems': totalItems,
-        'dateTaken': date,
-      });
+    // Client-generated doc id so a retry (pushPendingSyncs) overwrites the
+    // same document instead of creating a duplicate.
+    final docRef = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('quizAttempts')
+        .doc();
+    await db.update(
+      tableQuizAttempts,
+      {'firestoreId': docRef.id},
+      where: 'id = ?',
+      whereArgs: [localId],
+    );
+
+    final ok = await _firestoreWrite(() => docRef.set({
+          'subjectId': subjectId,
+          'lessonId': lessonId,
+          'quizType': quizType,
+          'score': score,
+          'totalItems': totalItems,
+          'dateTaken': date,
+        }));
+    if (ok) {
       await db.update(
         tableQuizAttempts,
-        {'firestoreId': docRef.id, 'synced': 1},
+        {'synced': 1},
         where: 'id = ?',
         whereArgs: [localId],
       );
-    } catch (_) {
-      // Offline or write failed — local copy is safe, will retry later.
     }
+    // Otherwise offline: the local row stays synced = 0 and is retried
+    // by pushPendingSyncs.
 
     return localId;
+  }
+
+  /// Firestore write futures only complete once the server acknowledges
+  /// the write, so while offline they hang instead of throwing. Wait a
+  /// short time, then give up (Firestore keeps the write queued itself)
+  /// so local flows such as quiz submission never block on the network.
+  /// Returns true only if the server confirmed the write.
+  Future<bool> _firestoreWrite(Future<void> Function() write) async {
+    try {
+      await write().timeout(const Duration(seconds: 3));
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<List<Map<String, dynamic>>> getQuizAttempts({
@@ -618,23 +642,22 @@ class LocalDbService {
       );
     }
 
-    try {
-      await _firestore
-          .collection('users')
-          .doc(uid)
-          .collection('lessonProgress')
-          .doc(lessonId)
-          .set({'subjectId': subjectId, 'lastOpenedAt': now},
-              SetOptions(merge: true));
+    final ok = await _firestoreWrite(() => _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('lessonProgress')
+        .doc(lessonId)
+        .set({'subjectId': subjectId, 'lastOpenedAt': now},
+            SetOptions(merge: true)));
+    if (ok) {
       await db.update(
         tableLessonProgress,
         {'synced': 1},
         where: 'userId = ? AND lessonId = ?',
         whereArgs: [uid, lessonId],
       );
-    } catch (_) {
-      // Offline — retried by pushPendingSyncs.
     }
+    // Offline — retried by pushPendingSyncs.
   }
 
   Future<void> markLessonCompleted({
@@ -670,24 +693,24 @@ class LocalDbService {
       );
     }
 
-    try {
-      await _firestore
-          .collection('users')
-          .doc(uid)
-          .collection('lessonProgress')
-          .doc(lessonId)
-          .set({
-        'subjectId': subjectId,
-        'isCompleted': true,
-        'completedAt': now,
-      }, SetOptions(merge: true));
+    final ok = await _firestoreWrite(() => _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('lessonProgress')
+        .doc(lessonId)
+        .set({
+      'subjectId': subjectId,
+      'isCompleted': true,
+      'completedAt': now,
+    }, SetOptions(merge: true)));
+    if (ok) {
       await db.update(
         tableLessonProgress,
         {'synced': 1},
         where: 'userId = ? AND lessonId = ?',
         whereArgs: [uid, lessonId],
       );
-    } catch (_) {}
+    }
   }
 
   Future<int> getCompletedLessonCount(String uid) async {
@@ -923,23 +946,22 @@ class LocalDbService {
       conflictAlgorithm: ConflictAlgorithm.ignore,
     );
 
-    try {
-      await _firestore
-          .collection('users')
-          .doc(uid)
-          .collection('appUsage')
-          .doc(today)
-          .set({'openedAt': DateTime.now().toIso8601String()},
-              SetOptions(merge: true));
+    final ok = await _firestoreWrite(() => _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('appUsage')
+        .doc(today)
+        .set({'openedAt': DateTime.now().toIso8601String()},
+            SetOptions(merge: true)));
+    if (ok) {
       await db.update(
         tableAppUsage,
         {'synced': 1},
         where: 'userId = ? AND dateString = ?',
         whereArgs: [uid, today],
       );
-    } catch (_) {
-      // Offline — retried by pushPendingSyncs.
     }
+    // Offline — retried by pushPendingSyncs.
   }
 
   Future<int> getDayStreak(String uid) async {
@@ -1063,26 +1085,33 @@ class LocalDbService {
       whereArgs: [uid],
     );
     for (final row in pendingAttempts) {
-      try {
-        final docRef = await _firestore
-            .collection('users')
-            .doc(uid)
-            .collection('quizAttempts')
-            .add({
-          'subjectId': row['subjectId'],
-          'lessonId': row['lessonId'],
-          'quizType': row['quizType'],
-          'score': row['score'],
-          'totalItems': row['totalItems'],
-          'dateTaken': row['dateTaken'],
-        });
+      // Reuse the stored doc id (or mint one) so retrying a write that
+      // Firestore already queued doesn't create a duplicate attempt.
+      final attempts =
+          _firestore.collection('users').doc(uid).collection('quizAttempts');
+      final existingId = row['firestoreId'] as String?;
+      final docRef = (existingId != null && existingId.isNotEmpty)
+          ? attempts.doc(existingId)
+          : attempts.doc();
+      final ok = await _firestoreWrite(() => docRef.set({
+            'subjectId': row['subjectId'],
+            'lessonId': row['lessonId'],
+            'quizType': row['quizType'],
+            'score': row['score'],
+            'totalItems': row['totalItems'],
+            'dateTaken': row['dateTaken'],
+          }, SetOptions(merge: true)));
+      if (ok) {
         await db.update(
           tableQuizAttempts,
           {'firestoreId': docRef.id, 'synced': 1},
           where: 'id = ?',
           whereArgs: [row['id']],
         );
-      } catch (_) {}
+      } else {
+        // Still offline: stop here, the rest would time out too.
+        return;
+      }
     }
 
     final pendingProgress = await db.query(
@@ -1091,25 +1120,24 @@ class LocalDbService {
       whereArgs: [uid],
     );
     for (final row in pendingProgress) {
-      try {
-        await _firestore
-            .collection('users')
-            .doc(uid)
-            .collection('lessonProgress')
-            .doc(row['lessonId'] as String)
-            .set({
-          'subjectId': row['subjectId'],
-          'isCompleted': row['isCompleted'] == 1,
-          'lastOpenedAt': row['lastOpenedAt'],
-          'completedAt': row['completedAt'],
-        }, SetOptions(merge: true));
-        await db.update(
-          tableLessonProgress,
-          {'synced': 1},
-          where: 'id = ?',
-          whereArgs: [row['id']],
-        );
-      } catch (_) {}
+      final ok = await _firestoreWrite(() => _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('lessonProgress')
+          .doc(row['lessonId'] as String)
+          .set({
+        'subjectId': row['subjectId'],
+        'isCompleted': row['isCompleted'] == 1,
+        'lastOpenedAt': row['lastOpenedAt'],
+        'completedAt': row['completedAt'],
+      }, SetOptions(merge: true)));
+      if (!ok) return;
+      await db.update(
+        tableLessonProgress,
+        {'synced': 1},
+        where: 'id = ?',
+        whereArgs: [row['id']],
+      );
     }
 
     final pendingUsage = await db.query(
@@ -1118,21 +1146,20 @@ class LocalDbService {
       whereArgs: [uid],
     );
     for (final row in pendingUsage) {
-      try {
-        await _firestore
-            .collection('users')
-            .doc(uid)
-            .collection('appUsage')
-            .doc(row['dateString'] as String)
-            .set({'openedAt': DateTime.now().toIso8601String()},
-                SetOptions(merge: true));
-        await db.update(
-          tableAppUsage,
-          {'synced': 1},
-          where: 'id = ?',
-          whereArgs: [row['id']],
-        );
-      } catch (_) {}
+      final ok = await _firestoreWrite(() => _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('appUsage')
+          .doc(row['dateString'] as String)
+          .set({'openedAt': DateTime.now().toIso8601String()},
+              SetOptions(merge: true)));
+      if (!ok) return;
+      await db.update(
+        tableAppUsage,
+        {'synced': 1},
+        where: 'id = ?',
+        whereArgs: [row['id']],
+      );
     }
   }
 

@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../controllers/calendar_controller.dart';
-import 'home_widgets.dart' show kMaroon, kGold;
+import 'home_widgets.dart'
+    show kMaroon, kGold, primaryTextColor, secondaryTextColor, surfaceColor;
 
 /// Month label with prev/next arrows.
 class CalendarMonthHeader extends StatelessWidget {
@@ -25,10 +26,10 @@ class CalendarMonthHeader extends StatelessWidget {
         _NavArrow(icon: Icons.chevron_left, onTap: onPrevious),
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w900,
-            color: Colors.black87,
+            color: primaryTextColor(context),
             fontFamily: 'Georgia',
           ),
         ),
@@ -47,7 +48,7 @@ class _NavArrow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: surfaceColor(context),
       shape: const CircleBorder(),
       child: InkWell(
         customBorder: const CircleBorder(),
@@ -94,9 +95,9 @@ class CalendarGrid extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: surfaceColor(context),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(
         children: [
@@ -109,7 +110,7 @@ class CalendarGrid extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
-                            color: Colors.grey.shade600,
+                            color: secondaryTextColor(context),
                           ),
                         ),
                       ),
@@ -152,7 +153,12 @@ class CalendarGrid extends StatelessWidget {
                                 isToday ? FontWeight.w900 : FontWeight.w600,
                             color: isSelected
                                 ? Colors.white
-                                : (isToday ? kMaroon : Colors.black87),
+                                : (isToday
+                                    ? (Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? kGold
+                                        : kMaroon)
+                                    : primaryTextColor(context)),
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -220,7 +226,8 @@ class _AddEventSheetState extends State<AddEventSheet> {
       lastDate: DateTime(2100),
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(primary: kMaroon),
+          colorScheme:
+              Theme.of(context).colorScheme.copyWith(primary: kMaroon),
         ),
         child: child!,
       ),
@@ -247,12 +254,12 @@ class _AddEventSheetState extends State<AddEventSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
+          Text(
             'Add Event',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w900,
-              color: Colors.black87,
+              color: primaryTextColor(context),
               fontFamily: 'Georgia',
             ),
           ),
@@ -263,9 +270,9 @@ class _AddEventSheetState extends State<AddEventSheet> {
               padding:
                   const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: surfaceColor(context),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade300),
+                border: Border.all(color: Theme.of(context).dividerColor),
               ),
               child: Row(
                 children: [
@@ -274,7 +281,8 @@ class _AddEventSheetState extends State<AddEventSheet> {
                   const SizedBox(width: 10),
                   Text(
                     DateFormat('MMMM d, yyyy').format(_date),
-                    style: const TextStyle(fontSize: 14, color: Colors.black87),
+                    style:
+                        TextStyle(fontSize: 14, color: primaryTextColor(context)),
                   ),
                 ],
               ),
@@ -283,13 +291,15 @@ class _AddEventSheetState extends State<AddEventSheet> {
           const SizedBox(height: 14),
           TextField(
             controller: _titleController,
+            style: TextStyle(color: primaryTextColor(context)),
             decoration: InputDecoration(
               hintText: 'Event title',
+              hintStyle: TextStyle(color: secondaryTextColor(context)),
               filled: true,
-              fillColor: Colors.white,
+              fillColor: surfaceColor(context),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey.shade300),
+                borderSide: BorderSide(color: Theme.of(context).dividerColor),
               ),
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -347,9 +357,9 @@ class EventListTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: surfaceColor(context),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Row(
         children: [
@@ -376,10 +386,10 @@ class EventListTile extends StatelessWidget {
               children: [
                 Text(
                   event.title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 14,
-                    color: Colors.black87,
+                    color: primaryTextColor(context),
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -388,7 +398,7 @@ class EventListTile extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Colors.grey.shade600,
+                    color: secondaryTextColor(context),
                   ),
                 ),
               ],

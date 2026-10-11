@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
@@ -72,13 +74,21 @@ class AchievementService {
           .collection('badges')
           .doc(badgeId);
 
-      final existing = await badgeRef.get();
+      // Offline, a default get() can stall; fall back to the local cache.
+      DocumentSnapshot<Map<String, dynamic>> existing;
+      try {
+        existing = await badgeRef.get().timeout(const Duration(seconds: 3));
+      } catch (_) {
+        existing = await badgeRef.get(const GetOptions(source: Source.cache));
+      }
       if (existing.exists) return null; // already earned — no duplicate award
 
       final subject = await _localDb.getSubjectById(subjectId);
       final subjectName = (subject?['name'] as String?) ?? 'Topic';
 
-      await badgeRef.set({
+      // Offline the write future never completes; Firestore keeps it
+      // queued and syncs it later, so don't block the quiz on it.
+      unawaited(badgeRef.set({
         'label': '$subjectName Mastery',
         // Placeholder for now — swap in a real badge graphic later.
         // Left null so the UI falls back to its default badge icon.
@@ -87,7 +97,9 @@ class AchievementService {
         'subjectId': subjectId,
         'scorePercent': scorePercent,
         'earnedAt': FieldValue.serverTimestamp(),
-      });
+      }).catchError((Object e) {
+        debugPrint('AchievementService: badge write failed: $e');
+      }));
 
       PointsService.instance.award(uid, PointsService.topicMasteryBonus);
 

@@ -32,7 +32,7 @@ Color subjectColorFor(String? code, String? hex) {
 /// near-black card, so lighten it in dark mode.
 Color labelColorFor(BuildContext context) {
   return Theme.of(context).brightness == Brightness.dark
-      ? const Color(0xFF9DB6DE)
+      ? Colors.white
       : kLabelBlue;
 }
 

@@ -486,14 +486,18 @@ class QuizController extends ChangeNotifier {
       }
     }
 
-    await _db.insertQuizAttempt(
-      uid: uid,
-      subjectId: attemptSubjectId,
-      lessonId: lessonId,
-      quizType: quizType,
-      score: score,
-      totalItems: questions.length,
-    );
+    try {
+      await _db.insertQuizAttempt(
+        uid: uid,
+        subjectId: attemptSubjectId,
+        lessonId: lessonId,
+        quizType: quizType,
+        score: score,
+        totalItems: questions.length,
+      );
+    } catch (e) {
+      debugPrint('QuizController: saving attempt failed: $e');
+    }
 
     var earned = PointsService.quizPointsToAward(
       quizType: quizType,
@@ -510,12 +514,16 @@ class QuizController extends ChangeNotifier {
           (await _db.getCompletedLessonIdsForSubject(uid, subjectId!))
               .contains(lessonId);
       if (!alreadyDone) earned += PointsService.lessonCompletePoints;
-      await _db.markLessonCompleted(
-        uid: uid,
-        subjectId: subjectId!,
-        lessonId: lessonId!,
-      );
-      lessonNewlyCompleted = true;
+      try {
+        await _db.markLessonCompleted(
+          uid: uid,
+          subjectId: subjectId!,
+          lessonId: lessonId!,
+        );
+        lessonNewlyCompleted = true;
+      } catch (e) {
+        debugPrint('QuizController: marking lesson complete failed: $e');
+      }
     }
 
     // A passing Topic Quiz (this mode) combined with every competency
