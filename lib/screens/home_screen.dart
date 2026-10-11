@@ -5,7 +5,9 @@ import 'package:flutter/services.dart';
 import '../controllers/home_controller.dart';
 import '../widgets/home_widgets.dart';
 import 'analytics_screen.dart';
+import 'lesson_screen.dart';
 import 'profile_screen.dart';
+import 'subject_detail_screen.dart';
 import 'subject_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -277,6 +279,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: ContinuePromptCard(
         subjectLabel: '${last['subjectName']} - ${last['lessonTitle']}',
         progressPercent: last['progressPercent'] as int,
+        onTap: () => _resumeLesson(last),
       ),
     );
   }
@@ -310,8 +313,30 @@ class _HomeScreenState extends State<HomeScreen> {
           lessonTitle: entry['lastLessonTitle'] as String?,
           progressPercent: entry['progressPercent'] as int,
           color: color,
+          onTap: () => _openSubject(subject['id'] as String),
         ),
       );
     }).toList();
+  }
+
+  Future<void> _openSubject(String subjectId) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SubjectDetailScreen(subjectId: subjectId),
+      ),
+    );
+    if (mounted) _controller.loadDashboard();
+  }
+
+  Future<void> _resumeLesson(Map<String, dynamic> last) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LessonScreen(
+          subjectId: last['subjectId'] as String,
+          lessonId: last['lessonId'] as String,
+        ),
+      ),
+    );
+    if (mounted) _controller.loadDashboard();
   }
 }
