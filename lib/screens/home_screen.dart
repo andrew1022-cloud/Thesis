@@ -84,6 +84,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: _buildBody(),
                         ),
                 ),
+                // Pinned to the bottom of the screen (just above the nav
+                // bar) — it does not scroll with the page.
+                if (!_controller.isLoading) _buildPinnedContinueCard(),
               ],
             );
           },
@@ -246,20 +249,34 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 12),
           ..._buildSubjectCards(),
 
-          const SizedBox(height: 20),
-
-          // ---- Do you wish to continue? ----
-          if (_controller.lastOpenedLesson != null)
-            ContinuePromptCard(
-              subjectLabel:
-                  '${_controller.lastOpenedLesson!['subjectName']} - '
-                  '${_controller.lastOpenedLesson!['lessonTitle']}',
-              progressPercent:
-                  _controller.lastOpenedLesson!['progressPercent'] as int,
-            ),
-
           const SizedBox(height: 12),
         ],
+      ),
+    );
+  }
+
+  /// "Do you wish to continue?" — the last opened subject that isn't
+  /// finished yet. Hidden when there is nothing left to continue.
+  Widget _buildPinnedContinueCard() {
+    final last = _controller.lastOpenedLesson;
+    if (last == null) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: ContinuePromptCard(
+        subjectLabel: '${last['subjectName']} - ${last['lessonTitle']}',
+        progressPercent: last['progressPercent'] as int,
       ),
     );
   }

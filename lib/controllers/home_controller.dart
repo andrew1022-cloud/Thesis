@@ -56,15 +56,69 @@ class HomeController extends ChangeNotifier {
       _db.getCompletedLessonCount(uid),
       _db.getAverageScorePercent(uid),
       _db.getContinueBySubjectFast(uid),
-      _db.getLastOpenedLessonOverall(uid),
     ]);
 
     overallProgressPercent = results[0] as int;
     dayStreak = results[1] as int;
     lessonsDone = results[2] as int;
     averageScorePercent = results[3] as int;
-    continueBySubject = results[4] as List<Map<String, dynamic>>;
-    lastOpenedLesson = results[5] as Map<String, dynamic>?;
+    final allSubjects = results[4] as List<Map<String, dynamic>>;
+    continueBySubject = _topThreePerCategory(allSubjects);
+    lastOpenedLesson = _lastOpenedUnfinished(allSubjects);
+  }
+
+  /// Categories shown on Home, in order, with how many subjects each.
+  static const List<String> _homeCategories = ['GE', 'PE', 'SP'];
+  static const int _subjectsPerCategory = 3;
+
+  /// Keeps only 3 subjects for each of General Education, Professional
+  /// Education and Specialization. Subjects the user opened most
+  /// recently come first; the rest follow in curriculum order.
+  List<Map<String, dynamic>> _topThreePerCategory(
+      List<Map<String, dynamic>> all) {
+    final out = <Map<String, dynamic>>[];
+    for (final code in _homeCategories) {
+      final inCategory = all
+          .where((e) => (e['subject'] as Map)['code'] == code)
+          .toList();
+      final indexed = {
+        for (var i = 0; i < inCategory.length; i++) inCategory[i]: i,
+      };
+      inCategory.sort((a, b) {
+        // lastOpenedAt is an ISO-8601 string, so text order = time order.
+        final ao = (a['lastOpenedAt'] as String?) ?? '';
+        final bo = (b['lastOpenedAt'] as String?) ?? '';
+        if (ao != bo) return bo.compareTo(ao); // newest first
+        return indexed[a]!.compareTo(indexed[b]!);
+      });
+      out.addAll(inCategory.take(_subjectsPerCategory));
+    }
+    return out;
+  }
+
+  /// The subject the user opened most recently that they have NOT
+  /// finished yet (progress < 100%). Null if there isn't one.
+  Map<String, dynamic>? _lastOpenedUnfinished(
+      List<Map<String, dynamic>> all) {
+    Map<String, dynamic>? best;
+    var bestOpened = '';
+    for (final e in all) {
+      if (e['lastLessonId'] == null) continue;
+      if ((e['progressPercent'] as int) >= 100) continue;
+      final opened = (e['lastOpenedAt'] as String?) ?? '';
+      if (best == null || opened.compareTo(bestOpened) > 0) {
+        best = e;
+        bestOpened = opened;
+      }
+    }
+    if (best == null) return null;
+    return {
+      'subjectId': (best['subject'] as Map)['id'],
+      'subjectName': (best['subject'] as Map)['name'],
+      'lessonId': best['lastLessonId'],
+      'lessonTitle': best['lastLessonTitle'],
+      'progressPercent': best['progressPercent'],
+    };
   }
 
   Future<void> _runBackgroundWork() async {

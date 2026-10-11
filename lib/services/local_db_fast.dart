@@ -64,7 +64,7 @@ extension LocalDbFast on LocalDbService {
     // so the first one we see for a subject is the one we want).
     final opened = await db.rawQuery('''
       SELECT p.subjectId AS subjectId, l.id AS lessonId,
-             l.title AS lessonTitle
+             l.title AS lessonTitle, p.lastOpenedAt AS lastOpenedAt
       FROM ${LocalDbService.tableLessonProgress} p
       INNER JOIN ${LocalDbService.tableLessons} l ON l.id = p.lessonId
       WHERE p.userId = ?
@@ -86,6 +86,7 @@ extension LocalDbFast on LocalDbService {
             'subject': subject,
             'lastLessonId': last?['lessonId'],
             'lastLessonTitle': last?['lessonTitle'],
+            'lastOpenedAt': last?['lastOpenedAt'],
             'progressPercent': total == 0 ? 0 : ((done / total) * 100).round(),
           };
         }(),
