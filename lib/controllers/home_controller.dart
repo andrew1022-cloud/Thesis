@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-import '../services/connectivity_service.dart';
 import '../services/local_db_fast.dart';
 import '../services/local_db_service.dart';
 import '../services/notification_service.dart';
@@ -45,10 +44,6 @@ class HomeController extends ChangeNotifier {
   Future<void> loadDashboard() async {
     isLoading = true;
     notifyListeners();
-
-    // Starts the online/offline detector (safe to call repeatedly).
-    // Powers the "You're offline" banner and the Offline Content screen.
-    ConnectivityService.instance.start();
 
     // 1) Local reads only — no network, no waiting on Firestore.
     await _loadStats();
@@ -145,6 +140,11 @@ class HomeController extends ChangeNotifier {
       // Log today's visit (local insert + Firestore write), then
       // refresh just the streak number.
       await _db.recordAppOpenedToday(uid);
+
+      // Opened today, so any reminder still queued for today is now
+      // wrong. Cancel right away; the ladder is rebuilt below.
+      unawaited(NotificationService.instance.cancelInactivityReminders());
+
       dayStreak = await _db.getDayStreakWithFreeze(uid);
       notifyListeners();
 
@@ -162,7 +162,9 @@ class HomeController extends ChangeNotifier {
     // Reminders render several images, so wait a bit and keep them
     // out of the way of the first frames.
     await Future.delayed(const Duration(seconds: 4));
-    if (_disposed) return;
+    // No `_disposed` bail-out here on purpose: NotificationService is a
+    // singleton, so it's safe to finish scheduling after the user has
+    // left Home. Skipping it used to leave a stale reminder queued.
     unawaited(_refreshInactivityReminders());
   }
 
@@ -178,7 +180,9 @@ class HomeController extends ChangeNotifier {
       }
 
       await NotificationService.instance.requestPermission();
-      await NotificationService.instance.scheduleInactivityReminders();
+      await NotificationService.instance.scheduleInactivityReminders(
+        streak: dayStreak,
+      );
     } catch (e) {
       debugPrint('HomeController: failed to schedule reminders: $e');
     }

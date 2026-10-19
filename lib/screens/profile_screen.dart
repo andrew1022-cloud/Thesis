@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../controllers/profile_controller.dart';
-import '../services/connectivity_service.dart';
-import '../services/remember_me_service.dart';
 import '../services/curriculum_seed_service.dart';
 import '../services/local_db_service.dart';
 import '../services/notification_service.dart';
@@ -16,7 +14,6 @@ import 'analytics_screen.dart';
 import 'auth_screen.dart';
 import 'home_screen.dart';
 import 'notes_screen.dart';
-import 'offline_content_screen.dart';
 import 'results_history_screen.dart';
 import 'subject_screen.dart';
 
@@ -108,8 +105,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (confirmed != true) return;
 
-    ConnectivityService.instance.stop();
-    await RememberMeService.instance.clear();
+    // A signed-out device shouldn't keep nagging about someone's streak.
+    await NotificationService.instance.cancelAll();
     await FirebaseAuth.instance.signOut();
     if (!mounted) return;
 
@@ -366,17 +363,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Navigator.of(context).push(
                 MaterialPageRoute(
                     builder: (_) => const ResultsHistoryScreen()),
-              );
-            },
-          ),
-          const SizedBox(height: 16),
-          ProfileMenuButton(
-            icon: Icons.cloud_download_rounded,
-            label: 'Offline Content',
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => const OfflineContentScreen()),
               );
             },
           ),

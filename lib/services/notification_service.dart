@@ -40,15 +40,6 @@ class _ReminderCopy {
 /// color, an expandable "big text" body so the full message is
 /// readable without opening the app, and the app's launcher icon as
 /// both the small and large icon.
-///
-/// Add to pubspec.yaml:
-///   dependencies:
-///     flutter_local_notifications: ^18.0.1
-///     flutter_timezone: ^1.0.8
-///     timezone: ^0.9.4
-///
-/// Android also needs a couple of manifest entries — see
-/// NOTIFICATION_SETUP.md for the exact snippet.
 class NotificationService {
   NotificationService._internal();
   static final NotificationService instance = NotificationService._internal();
@@ -255,6 +246,9 @@ class NotificationService {
   /// from a light nudge to a more direct one, the same shape as
   /// Duolingo's streak reminders. Edit freely — add/remove day
   /// offsets or change the copy without touching anything else.
+  ///
+  /// The day-1 entry is a fallback; [_copyFor] swaps in streak-aware
+  /// text for it.
   static const Map<int, _ReminderCopy> _inactivitySchedule = {
     1: _ReminderCopy(
       title: "Don't lose your streak! 🔥",
@@ -285,6 +279,22 @@ class NotificationService {
           'prep back on track.',
     ),
   };
+
+  /// Day-1 copy depends on whether there is actually a streak to lose.
+  _ReminderCopy _copyFor(int dayOffset, int streak) {
+    if (dayOffset == 1) {
+      return streak > 0
+          ? _ReminderCopy(
+              title: "Don't lose your $streak-day streak! 🔥",
+              body: "You haven't reviewed today. A quick lesson keeps it alive.",
+            )
+          : const _ReminderCopy(
+              title: 'Start a streak today 🔥',
+              body: 'Open RevEduc and review one lesson to get a streak going.',
+            );
+    }
+    return _inactivitySchedule[dayOffset]!;
+  }
 
   /// Call once at app startup (see main.dart). Safe to call more than
   /// once — subsequent calls are no-ops.
@@ -428,10 +438,14 @@ class NotificationService {
   /// (default 6:00 PM), so the "day 3" reminder fires at 6 PM three
   /// days after [from], not at whatever time-of-day the app happened
   /// to be opened.
+  ///
+  /// [streak] is the user's current day streak; it only affects the
+  /// wording of the day-1 reminder.
   Future<void> scheduleInactivityReminders({
     DateTime? from,
     int hour = 18,
     int minute = 0,
+    int streak = 0,
   }) async {
     if (!_initialized) await init();
 
@@ -440,9 +454,8 @@ class NotificationService {
     final baseDate = from ?? DateTime.now();
     final now = DateTime.now();
 
-    for (final entry in _inactivitySchedule.entries) {
-      final dayOffset = entry.key;
-      final copy = entry.value;
+    for (final dayOffset in _inactivitySchedule.keys) {
+      final copy = _copyFor(dayOffset, streak);
 
       final target = DateTime(
         baseDate.year,
@@ -476,6 +489,7 @@ class NotificationService {
   /// separately in case you want to silence reminders entirely (e.g.
   /// a "Reminders" toggle in Settings).
   Future<void> cancelInactivityReminders() async {
+    if (!_initialized) await init();
     for (final dayOffset in _inactivitySchedule.keys) {
       await _plugin.cancel(_inactivityIdBase + dayOffset);
     }
@@ -484,7 +498,10 @@ class NotificationService {
   /// Cancels absolutely everything this plugin instance has scheduled
   /// — use on full logout if you don't want a signed-out device to
   /// still nag about a review streak.
-  Future<void> cancelAll() => _plugin.cancelAll();
+  Future<void> cancelAll() async {
+    if (!_initialized) await init();
+    await _plugin.cancelAll();
+  }
 
   /// Fires an immediate (non-scheduled) local notification, using the
   /// same branded card style as the reminder ladder above. Intended

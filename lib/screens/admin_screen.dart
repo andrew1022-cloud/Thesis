@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../controllers/admin_controller.dart';
-import '../services/connectivity_service.dart';
-import '../services/remember_me_service.dart';
+import '../services/notification_service.dart';
 import '../widgets/admin_widgets.dart';
 import '../widgets/home_widgets.dart';
 import 'admin_management_screen.dart';
@@ -56,8 +55,8 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 
   Future<void> _handleLogout() async {
-    ConnectivityService.instance.stop();
-    await RememberMeService.instance.clear();
+    // A signed-out device shouldn't keep showing study reminders.
+    await NotificationService.instance.cancelAll();
     await FirebaseAuth.instance.signOut();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
@@ -205,12 +204,7 @@ class _AdminScreenState extends State<AdminScreen> {
                 ),
               ),
               TextButton(
-                onPressed: () async {
-                  final messenger = ScaffoldMessenger.of(context);
-                  final message = await _controller.exportUsers();
-                  if (!mounted) return;
-                  messenger.showSnackBar(SnackBar(content: Text(message)));
-                },
+                onPressed: _controller.exportUsers,
                 style: TextButton.styleFrom(
                   padding: EdgeInsets.zero,
                   minimumSize: const Size(0, 0),
