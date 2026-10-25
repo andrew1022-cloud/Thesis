@@ -54,10 +54,6 @@ class NotificationService {
   /// you might add later (e.g. calendar event reminders).
   static const int _inactivityIdBase = 5000;
 
-  /// Id used by [scheduleTestNotification] — kept well outside the
-  /// inactivity range above.
-  static const int _testNotificationId = 9999;
-
   static const String _channelId = 'inactivity_reminders';
   static const String _channelName = 'Review Reminders';
   static const String _channelDescription =
@@ -528,33 +524,6 @@ class NotificationService {
       );
     } catch (e) {
       debugPrint('NotificationService: achievement notification failed: $e');
-    }
-  }
-
-  /// Dev/debug helper — fires a single test notification immediately,
-  /// so tapping its button in the UI shows the styled notification
-  /// right away instead of making you wait and check the tray blind.
-  /// Not called anywhere by default; wire it to a button in a
-  /// debug-only menu (see ProfileScreen's Developer Tools).
-  Future<void> scheduleTestNotification() async {
-    if (!_initialized) await init();
-    await requestPermission();
-
-    const title = 'Test reminder';
-    const body =
-        'If you can see this styled nicely — maroon accent, big-text '
-        'body, large icon — notifications are wired up correctly.';
-
-    try {
-      await _plugin.show(
-        _testNotificationId,
-        title,
-        body,
-        await _brandedDetails(title: title, body: body),
-      );
-    } catch (e) {
-      debugPrint('NotificationService: test notification failed: $e');
-      rethrow;
     }
   }
 }

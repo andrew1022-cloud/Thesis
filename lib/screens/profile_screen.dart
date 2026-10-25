@@ -1,13 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../controllers/profile_controller.dart';
-import '../services/curriculum_seed_service.dart';
-import '../services/local_db_service.dart';
 import '../services/notification_service.dart';
-import '../services/seed_service.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/profile_widgets.dart';
 import 'analytics_screen.dart';
@@ -114,122 +110,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       MaterialPageRoute(builder: (_) => const AuthScreen()),
       (route) => false,
     );
-  }
-
-  // ── Dev-only: seed / clear temporary test lesson & quiz ────────────────
-  Future<void> _seedTestData() async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await SeedService.instance.seedTestData();
-      await LocalDbService.instance.syncAll();
-      await _controller.loadProfile();
-      if (mounted) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Test lesson & quiz seeded ✅')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text('Seeding failed: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _clearTestData() async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await SeedService.instance.clearTestData();
-      await LocalDbService.instance.syncAll();
-      if (mounted) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Test data cleared 🧹')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text('Clear failed: $e')),
-        );
-      }
-    }
-  }
-
-  // ── Dev-only: wipe every subject/lesson and replace with the fixed
-  // GenEd / ProfEd / Specialization curriculum. Destructive, so it's
-  // gated behind a confirmation dialog.
-  Future<void> _seedFixedCurriculum() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Theme.of(context).cardColor,
-        title: Text(
-          'Reset to fixed curriculum?',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            color: primaryTextColor(context),
-          ),
-        ),
-        content: Text(
-          'This deletes every existing subject and lesson and replaces '
-          'them with the fixed GenEd / ProfEd / Specialization '
-          'curriculum. This cannot be undone.',
-          style: TextStyle(color: primaryTextColor(context)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel',
-                style: TextStyle(color: secondaryTextColor(context))),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Reset & Seed',
-                style:
-                    TextStyle(color: kMaroon, fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await CurriculumSeedService.instance.resetAndSeedFixedCurriculum();
-      await LocalDbService.instance.syncAll();
-      if (mounted) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Fixed curriculum seeded ✅')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text('Seeding failed: $e')),
-        );
-      }
-    }
-  }
-
-  // ── Dev-only: verify the inactivity-reminder notification pipeline ─────
-  Future<void> _testNotification() async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await NotificationService.instance.scheduleTestNotification();
-      if (mounted) {
-        messenger.showSnackBar(
-          const SnackBar(
-              content: Text('Test notification sent — check your tray 🔔')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text('Notification test failed: $e')),
-        );
-      }
-    }
   }
 
   @override
@@ -403,44 +283,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             label: 'Log out',
             onTap: _handleLogout,
           ),
-
-          // ── 4. Dev-only: seed / clear temporary test data, notif test ──────
-          // Hidden automatically in release builds via kDebugMode.
-          if (kDebugMode) ...[
-            const SizedBox(height: 24),
-            Text(
-              'Developer Tools',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: secondaryTextColor(context),
-              ),
-            ),
-            const SizedBox(height: 12),
-            ProfileMenuButton(
-              icon: Icons.auto_stories_rounded,
-              label: 'Seed Fixed Curriculum',
-              onTap: _seedFixedCurriculum,
-            ),
-            const SizedBox(height: 16),
-            ProfileMenuButton(
-              icon: Icons.bug_report_rounded,
-              label: 'Seed Test Lesson/Quiz',
-              onTap: _seedTestData,
-            ),
-            const SizedBox(height: 16),
-            ProfileMenuButton(
-              icon: Icons.delete_sweep_rounded,
-              label: 'Clear Test Data',
-              onTap: _clearTestData,
-            ),
-            const SizedBox(height: 16),
-            ProfileMenuButton(
-              icon: Icons.notifications_active_rounded,
-              label: 'Test Notification',
-              onTap: _testNotification,
-            ),
-          ],
 
           const SizedBox(height: 12),
         ],

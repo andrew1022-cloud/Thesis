@@ -1,10 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../controllers/settings_controller.dart';
-import '../services/notification_service.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/settings_widgets.dart';
 import 'account_settings_screen.dart';
@@ -90,15 +88,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     final error = await _controller.clearLocalCache();
     _snack(error ?? 'Local cache cleared and refreshed.');
-  }
-
-  Future<void> _testNotification() async {
-    try {
-      await NotificationService.instance.scheduleTestNotification();
-      _snack('Test notification sent — check your tray 🔔');
-    } catch (e) {
-      _snack('Notification test failed: $e');
-    }
   }
 
   void _showAbout() {
@@ -238,13 +227,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: 'Version 1.0.0',
                 onTap: _showAbout,
               ),
-              if (kDebugMode)
-                SettingsTile(
-                  icon: Icons.notifications_active_rounded,
-                  label: 'Test Notification',
-                  subtitle: 'Debug builds only',
-                  onTap: _testNotification,
-                ),
             ],
           ),
         ],

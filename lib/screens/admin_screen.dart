@@ -65,6 +65,12 @@ class _AdminScreenState extends State<AdminScreen> {
     );
   }
 
+  Future<void> _handleExport() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final message = await _controller.exportUsers();
+    messenger.showSnackBar(SnackBar(content: Text(message)));
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -204,20 +210,27 @@ class _AdminScreenState extends State<AdminScreen> {
                 ),
               ),
               TextButton(
-                onPressed: _controller.exportUsers,
+                onPressed: _controller.isExporting ? null : _handleExport,
                 style: TextButton.styleFrom(
                   padding: EdgeInsets.zero,
                   minimumSize: const Size(0, 0),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                child: const Text(
-                  'Export',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1F6FEB),
-                  ),
-                ),
+                child: _controller.isExporting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: kMaroon),
+                      )
+                    : const Text(
+                        'Export',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1F6FEB),
+                        ),
+                      ),
               ),
             ],
           ),

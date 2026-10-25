@@ -3,11 +3,10 @@
 /// list of subjects and their competencies.
 ///
 /// This is the single source of truth for subjects/competencies.
-/// `CurriculumSeedService` pushes it into Firestore's `subjects` /
-/// `subjects/{id}/lessons` collections using the exact schema
-/// `LocalDbService` already syncs down into SQLite — so nothing else
-/// in the app (SubjectScreen, SubjectDetailScreen, AdminScreen,
-/// quizzes) needs to change.
+/// Its deterministic ids match the exact schema `LocalDbService`
+/// already syncs down into SQLite — so nothing else in the app
+/// (SubjectScreen, SubjectDetailScreen, AdminScreen, quizzes)
+/// needs to change.
 library;
 
 class CurriculumCompetency {
@@ -327,13 +326,11 @@ const List<CurriculumCategory> kFixedCurriculum = [
 // DETERMINISTIC IDS
 // =================================================================
 //
-// Both the admin "Contents" publishing flow (ContentController) and
-// the dev-only curriculum seeder (CurriculumSeedService) need the
-// exact same Firestore doc ids for a given (category, subject index)
-// and (subject, competency index) pair — otherwise publishing a
-// lesson from the admin form could write to a different doc than the
-// one the seeder created (or vice versa). These three helpers are the
-// single source of truth for that scheme.
+// The admin "Contents" publishing flow (ContentController) needs
+// stable Firestore doc ids for a given (category, subject index)
+// and (subject, competency index) pair, so republishing a lesson
+// always targets the same doc. These three helpers are the single
+// source of truth for that scheme.
 
 String _curriculumPad(int oneBasedIndex) =>
     oneBasedIndex.toString().padLeft(2, '0');
