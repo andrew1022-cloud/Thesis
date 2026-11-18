@@ -10,6 +10,7 @@ import 'analytics_screen.dart';
 import 'auth_screen.dart';
 import 'home_screen.dart';
 import 'notes_screen.dart';
+import 'offline_content_screen.dart';
 import 'results_history_screen.dart';
 import 'subject_screen.dart';
 
@@ -243,6 +244,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Navigator.of(context).push(
                 MaterialPageRoute(
                     builder: (_) => const ResultsHistoryScreen()),
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          ProfileMenuButton(
+            icon: Icons.cloud_download_rounded,
+            label: 'Offline Content',
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const OfflineContentScreen()),
               );
             },
           ),

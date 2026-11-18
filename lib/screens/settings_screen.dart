@@ -7,6 +7,7 @@ import '../widgets/home_widgets.dart';
 import '../widgets/settings_widgets.dart';
 import 'account_settings_screen.dart';
 import 'help_center_screen.dart';
+import 'offline_content_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -187,6 +188,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SettingsSection(
             title: 'Data',
             children: [
+              SettingsTile(
+                icon: Icons.cloud_download_outlined,
+                label: 'Offline Content',
+                subtitle: 'Download subjects for use without internet',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                      builder: (_) => const OfflineContentScreen()),
+                ),
+              ),
               SettingsTile(
                 icon: Icons.sync_rounded,
                 label: 'Sync Now',
