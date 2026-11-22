@@ -67,58 +67,110 @@ class AnalyticsController extends ChangeNotifier {
   List<LeaderboardEntry> leaderboardTop = [];
   LeaderboardEntry? currentUserEntry;
 
+  bool _disposed = false;
+
+  /// True when the online leaderboard/rank could not be loaded
+  /// (offline, Firestore quota exceeded, etc.). The UI can use this
+  /// to show a "couldn't load" hint; local stats still display.
+  bool leaderboardUnavailable = false;
+
+  /// Runs a Firestore-backed load and returns [fallback] on any error,
+  /// so one failing request can never freeze the whole screen.
+  Future<T> _safe<T>(String name, Future<T> Function() load, T fallback) async {
+    try {
+      return await load().timeout(const Duration(seconds: 10));
+    } catch (e) {
+      debugPrint('AnalyticsController: $name failed: $e');
+      return fallback;
+    }
+  }
+
   Future<void> loadAnalytics() async {
     isLoading = true;
     notifyListeners();
 
-    final results = await Future.wait([
-      _db.getOverallProgressPercent(uid),
-      _db.getCategoryProgressPercent(uid, 'GE'),
-      _db.getCategoryProgressPercent(uid, 'PE'),
-      _db.getCategoryProgressPercent(uid, 'SP'),
-      _db.getCompetencyRankings(uid),
-      _db.getLeaderboardTop(limit: 5),
-      _db.getUserPointsAndRank(uid),
-    ]);
+    try {
+      // Local (SQLite) stats — fast and always available.
+      final local = await Future.wait([
+        _db.getOverallProgressPercent(uid),
+        _db.getCategoryProgressPercent(uid, 'GE'),
+        _db.getCategoryProgressPercent(uid, 'PE'),
+        _db.getCategoryProgressPercent(uid, 'SP'),
+        _db.getCompetencyRankings(uid),
+      ]);
 
-    overallProgressPercent = results[0] as int;
-    generalEducationProgressPercent = results[1] as int;
-    professionalEducationProgressPercent = results[2] as int;
-    specializationProgressPercent = results[3] as int;
+      overallProgressPercent = local[0] as int;
+      generalEducationProgressPercent = local[1] as int;
+      professionalEducationProgressPercent = local[2] as int;
+      specializationProgressPercent = local[3] as int;
 
-    final rankings = results[4] as List<Map<String, dynamic>>;
-    final stats = rankings.map((r) {
-      final code = r['subjectCode'] as String?;
-      return CompetencyStat(
-        lessonTitle: r['lessonTitle'] as String,
-        categoryLabel: categoryTitles[code] ?? (r['subjectName'] as String),
-        subjectCode: code,
-        avgScorePercent: (r['avgScore'] as num).toDouble(),
-      );
-    }).toList();
+      final rankings = local[4] as List<Map<String, dynamic>>;
+      final stats = rankings.map((r) {
+        final code = r['subjectCode'] as String?;
+        return CompetencyStat(
+          lessonTitle: r['lessonTitle'] as String,
+          categoryLabel: categoryTitles[code] ?? (r['subjectName'] as String),
+          subjectCode: code,
+          avgScorePercent: (r['avgScore'] as num).toDouble(),
+        );
+      }).toList();
 
-    strongestCompetencies = stats.take(5).toList();
-    weakestCompetencies = stats.reversed.take(5).toList();
+      strongestCompetencies = stats.take(5).toList();
+      weakestCompetencies = stats.reversed.take(5).toList();
+    } catch (e) {
+      debugPrint('AnalyticsController: local stats failed: $e');
+    }
 
-    final top = results[5] as List<Map<String, dynamic>>;
-    leaderboardTop = top
-        .map((r) => LeaderboardEntry(
-              rank: r['rank'] as int,
-              name: r['username'] as String,
-              points: r['points'] as int,
-            ))
-        .toList();
-
-    final me = results[6] as Map<String, dynamic>;
-    currentUserEntry = LeaderboardEntry(
-      rank: me['rank'] as int,
-      name: 'User',
-      points: me['points'] as int,
-      isCurrentUser: true,
-    );
-
+    // Show the local numbers right away; the online part follows.
     isLoading = false;
     notifyListeners();
+
+    // Online (Firestore) leaderboard + rank. Each one fails on its own.
+    final online = await Future.wait([
+      _safe<List<Map<String, dynamic>>?>(
+          'leaderboard', () => _db.getLeaderboardTop(limit: 5), null),
+      _safe<Map<String, dynamic>?>(
+          'rank', () => _db.getUserPointsAndRank(uid), null),
+    ]);
+
+    final top = online[0] as List<Map<String, dynamic>>?;
+    final me = online[1] as Map<String, dynamic>?;
+
+    leaderboardUnavailable = top == null && me == null;
+
+    if (top != null) {
+      leaderboardTop = top
+          .map((r) => LeaderboardEntry(
+                rank: r['rank'] as int,
+                name: r['username'] as String,
+                points: r['points'] as int,
+                uid: r['uid'] as String?,
+              ))
+          .toList();
+    }
+
+    if (me != null) {
+      currentUserEntry = LeaderboardEntry(
+        rank: me['rank'] as int,
+        name: (me['username'] as String?) ?? 'User',
+        points: me['points'] as int,
+        isCurrentUser: true,
+        uid: uid,
+      );
+    }
+
+    notifyListeners();
+  }
+
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 
   Future<void> refresh() => loadAnalytics();

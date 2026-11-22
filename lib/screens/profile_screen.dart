@@ -1,9 +1,8 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../controllers/profile_controller.dart';
-import '../services/notification_service.dart';
+import '../services/session_service.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/profile_widgets.dart';
 import 'analytics_screen.dart';
@@ -23,6 +22,8 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final ProfileController _controller = ProfileController();
+
+  bool _loggingOut = false;
 
   @override
   void initState() {
@@ -63,6 +64,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _handleLogout() async {
+    if (_loggingOut) return;
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -100,11 +103,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
 
-    if (confirmed != true) return;
+    if (confirmed != true || !mounted) return;
 
-    // A signed-out device shouldn't keep nagging about someone's streak.
-    await NotificationService.instance.cancelAll();
-    await FirebaseAuth.instance.signOut();
+    setState(() => _loggingOut = true);
+
+    try {
+      // Clears remember-me, signs out of Google + Firebase, cancels
+      // reminders, stops the connectivity listener. A failure in any
+      // optional step is swallowed so it can't block the sign-out.
+      await SessionService.instance.logout();
+    } catch (e) {
+      debugPrint('ProfileScreen: logout failed: $e');
+      if (!mounted) return;
+      setState(() => _loggingOut = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Couldn't log out. Please try again.")),
+      );
+      return;
+    }
+
     if (!mounted) return;
 
     Navigator.of(context).pushAndRemoveUntil(
@@ -293,7 +310,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ProfileMenuButton(
             icon: Icons.logout_rounded,
             label: 'Log out',
-            onTap: _handleLogout,
+            onTap: _loggingOut ? null : _handleLogout,
+            trailing: _loggingOut
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2.2, color: kMaroon),
+                  )
+                : null,
           ),
 
           const SizedBox(height: 12),

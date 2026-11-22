@@ -1,9 +1,8 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../controllers/admin_controller.dart';
-import '../services/notification_service.dart';
+import '../services/session_service.dart';
 import '../widgets/admin_widgets.dart';
 import '../widgets/home_widgets.dart';
 import 'admin_management_screen.dart';
@@ -22,6 +21,8 @@ class AdminScreen extends StatefulWidget {
 
 class _AdminScreenState extends State<AdminScreen> {
   late final AdminController _controller;
+
+  bool _loggingOut = false;
 
   @override
   void initState() {
@@ -55,9 +56,23 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 
   Future<void> _handleLogout() async {
-    // A signed-out device shouldn't keep showing study reminders.
-    await NotificationService.instance.cancelAll();
-    await FirebaseAuth.instance.signOut();
+    if (_loggingOut) return;
+    setState(() => _loggingOut = true);
+
+    try {
+      // Same full teardown as the student log-out: remember-me flags,
+      // Google + Firebase sign-out, reminders, connectivity listener.
+      await SessionService.instance.logout();
+    } catch (e) {
+      debugPrint('AdminScreen: logout failed: $e');
+      if (!mounted) return;
+      setState(() => _loggingOut = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Couldn't log out. Please try again.")),
+      );
+      return;
+    }
+
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const AuthScreen()),
@@ -152,11 +167,21 @@ class _AdminScreenState extends State<AdminScreen> {
               ],
             ),
           ),
-          IconButton(
-            onPressed: _handleLogout,
-            icon: const Icon(Icons.logout_rounded, color: Colors.white70),
-            tooltip: 'Log out',
-          ),
+          _loggingOut
+              ? const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2.2, color: Colors.white70),
+                  ),
+                )
+              : IconButton(
+                  onPressed: _handleLogout,
+                  icon: const Icon(Icons.logout_rounded, color: Colors.white70),
+                  tooltip: 'Log out',
+                ),
         ],
       ),
     );

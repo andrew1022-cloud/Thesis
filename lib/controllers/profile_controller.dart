@@ -156,8 +156,16 @@ class ProfileController extends ChangeNotifier {
     );
   }
 
+  bool _disposed = false;
+
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
+
   @override
   void dispose() {
+    _disposed = true;
     themeNotifier.removeListener(_onThemeChanged);
     super.dispose();
   }

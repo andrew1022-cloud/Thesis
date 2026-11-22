@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/local_db_fast.dart';
@@ -40,6 +41,13 @@ class HomeController extends ChangeNotifier {
   /// Weak-area quests for the user's weakest competencies (empty when
   /// they have none).
   List<WeakAreaQuest> weakAreaQuests = [];
+
+  /// True while [uid] is still the signed-in account. Background work
+  /// that outlives this screen (reminder scheduling) must check this
+  /// before touching anything account-specific — otherwise logging out
+  /// right after opening Home leaves a reminder ladder queued on a
+  /// signed-out device.
+  bool get _stillSignedIn => FirebaseAuth.instance.currentUser?.uid == uid;
 
   Future<void> loadDashboard() async {
     isLoading = true;
@@ -162,9 +170,13 @@ class HomeController extends ChangeNotifier {
     // Reminders render several images, so wait a bit and keep them
     // out of the way of the first frames.
     await Future.delayed(const Duration(seconds: 4));
+
     // No `_disposed` bail-out here on purpose: NotificationService is a
     // singleton, so it's safe to finish scheduling after the user has
-    // left Home. Skipping it used to leave a stale reminder queued.
+    // left Home (e.g. switched tabs). But if the user LOGGED OUT in the
+    // meantime, scheduling must not happen — that was leaving a fresh
+    // reminder ladder queued on a signed-out device.
+    if (!_stillSignedIn) return;
     unawaited(_refreshInactivityReminders());
   }
 
@@ -179,10 +191,23 @@ class HomeController extends ChangeNotifier {
         // Offline — fall through and schedule anyway.
       }
 
+      // The awaits above can take a while; re-check right before we
+      // actually touch the notification plugin.
+      if (!_stillSignedIn) return;
+
       await NotificationService.instance.requestPermission();
+
+      if (!_stillSignedIn) return;
+
       await NotificationService.instance.scheduleInactivityReminders(
         streak: dayStreak,
       );
+
+      // Logout may have happened while the ladder was being built
+      // (scheduling renders images and takes a moment). Undo it.
+      if (!_stillSignedIn) {
+        await NotificationService.instance.cancelAll();
+      }
     } catch (e) {
       debugPrint('HomeController: failed to schedule reminders: $e');
     }
