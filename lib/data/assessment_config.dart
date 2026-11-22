@@ -78,21 +78,25 @@ const Map<String, List<ExamGroup>> kExamBlueprint = {
   ],
 
   // ── Professional Education ──────────────────────────────────────
-  // 0 Foundation of teaching learning process
-  // 1 The Professional Teacher
-  // 2 The Teacher and the School curriculum
-  // 3 Methods and Strategies of Teaching
-  // 4 Educational Technology
-  // 5 Headstart for Toddlers, Child and Adolescent
-  // 6 Validating theoretical knowledge in the actual assessment of learning
-  // 7 Documentation of Experiential Learning
-  // 8 Action Research
+  // 0 The Child and Adolescent Learners and Learning Principles
+  // 1 The Teaching Profession
+  // 2 The Teacher and the Community, School Culture and Organizational Leadership
+  // 3 Foundation of Special and Inclusive Education
+  // 4 Facilitating Learner-Centered Teaching
+  // 5 Assessment in Learning 1
+  // 6 Assessment in Learning 2
+  // 7 Technology for Teaching and Learning 1
+  // 8 The Teacher and the School Curriculum
+  // 9 Building and Enhancing New Literacies Across the Curriculum
+  // 10 Field Study 1
+  // 11 Field Study 2
+  // 12 Teaching Internship
   'PE': [
-    ExamGroup('Foundation & Professional Teacher', [0, 1], 15),
-    ExamGroup('Curriculum, Methods & Educational Technology', [2, 3, 4], 30),
-    ExamGroup('Headstart for Toddlers, Child and Adolescent', [5], 20),
-    ExamGroup('Assessment of Learning', [6], 15),
-    ExamGroup('Experiential Learning & Action Research', [7, 8], 20),
+    ExamGroup('Learners & Learning Principles', [0, 3], 20),
+    ExamGroup('Teaching Profession & Community', [1, 2], 15),
+    ExamGroup('Teaching, Curriculum, Technology & Literacies', [4, 7, 8, 9], 30),
+    ExamGroup('Assessment in Learning', [5, 6], 15),
+    ExamGroup('Field Study & Teaching Internship', [10, 11, 12], 20),
   ],
 
   // ── Specialization ──────────────────────────────────────────────

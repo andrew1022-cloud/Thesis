@@ -124,74 +124,94 @@ const List<CurriculumCategory> kFixedCurriculum = [
     label: 'Professional Education',
     subjects: [
       CurriculumSubject(
-        name: 'Foundation of teaching learning process',
+        name: 'The Child and Adolescent Learners and Learning Principles',
         competencies: [
-          CurriculumCompetency('1.1', 'Apply philosophical and sociological principles in teaching–learning situations'),
-          CurriculumCompetency('1.2', 'Apply foundation theories of special and inclusive education'),
+          CurriculumCompetency('1.1', 'Apply pedagogical approaches to student-centered teaching and learning that are metacognitive, innovative, inclusive and developmentally appropriate for child and adolescent learners'),
+          CurriculumCompetency('1.2', 'Appraise a learning environment that is responsive to learners from various family backgrounds, economic levels and socio-cultural affiliations'),
+          CurriculumCompetency('1.3', "Demonstrate understanding of differentiated teaching suited to learners' gender, strengths, interests, experiences and needs"),
+          CurriculumCompetency('1.4', 'Draw implications from research findings on child development along biological, cognitive, linguistic and socio-cultural dimensions'),
         ],
       ),
       CurriculumSubject(
-        name: 'The Professional Teacher',
+        name: 'The Teaching Profession',
         competencies: [
-          CurriculumCompetency('2.1', "Describe the professional teacher and the ways and means to ensure high standards of the teacher's personal and professional life"),
-          CurriculumCompetency('2.2', 'Explain what teaching is and the various roles of a teacher in meeting challenges in the 21st century'),
-          CurriculumCompetency('2.3', 'Demonstrate understanding of the concepts of the teacher as a school culture catalyst, transformational leader and educational resources manager with responsibilities as specified in the Code of Ethics for Professional Teachers'),
+          CurriculumCompetency('2.1', "Describe the professional teacher and the ways and means of upholding high standards in the teacher's personal and professional life"),
+          CurriculumCompetency('2.2', 'Explain what teaching is and the various roles of a teacher in meeting the challenges of the 21st century'),
         ],
       ),
       CurriculumSubject(
-        name: 'The Teacher and the School curriculum',
+        name: 'The Teacher and the Community, School Culture and Organizational Leadership',
         competencies: [
-          CurriculumCompetency('3.1', 'Demonstrate research-based knowledge of the concepts, theories and principles in curriculum planning, design, development and evaluation'),
+          CurriculumCompetency('3.1', 'Apply philosophical and sociological principles in teaching-learning situations'),
+          CurriculumCompetency('3.2', 'Demonstrate understanding of the teacher as school culture catalyst, transformational leader, and educational resources manager, with the responsibilities specified in the Code of Ethics for Professional Teachers'),
         ],
       ),
       CurriculumSubject(
-        name: 'Methods and Strategies of Teaching',
+        name: 'Foundation of Special and Inclusive Education',
         competencies: [
-          CurriculumCompetency('4.1', 'Demonstrate knowledge of teaching strategies that build and enhance new literacies inclusive of multi-cultural, social, media, financial, cyber/digital, ecological, arts and creativity new literacies across the curriculum'),
-          CurriculumCompetency('4.2', 'Prepare developmentally sequenced lesson plans with well aligned learning outcomes and competencies based on K-to-12 spiral curriculum requirement'),
-          CurriculumCompetency('4.3', 'Utilize the concepts of new literacies in the 21st century (globalization and multi-cultural literacy, social literacy, media literacy, financial literacy, cyber literacy, digital literacy, eco literacy, arts and creativity literacy, interdisciplinary explorations and other teaching strategies) and shared cultural practices across learning areas'),
+          CurriculumCompetency('4.1', 'Apply foundation theories of special and inclusive education'),
         ],
       ),
       CurriculumSubject(
-        name: 'Educational Technology',
+        name: 'Facilitating Learner-Centered Teaching',
         competencies: [
-          CurriculumCompetency('5.1', 'Employ teaching strategies, methods, instructional materials and technology, classroom management techniques appropriate to subject areas and inclusive of learners from indigenous groups'),
-          CurriculumCompetency('5.2', 'Demonstrate skills in developing and using a variety of conventional and non-conventional resources including Information and Communication Technology to address learning goals and needs of various learners'),
+          CurriculumCompetency('5.1', 'Prepare developmentally sequenced lesson plans with well-aligned learning outcomes and competencies based on the K to 12 spiral curriculum'),
+          CurriculumCompetency('5.2', 'Employ teaching strategies, methods, instructional materials, technology and classroom management techniques appropriate to subject areas and inclusive of learners from indigenous groups'),
         ],
       ),
       CurriculumSubject(
-        name: 'Headstart for Toddlers, Child and Adolescent',
+        name: 'Assessment in Learning 1',
         competencies: [
-          CurriculumCompetency('6.1', 'Apply pedagogical approaches to the student centered teaching and learning process that is metacognitive, innovative, inclusive and developmentally appropriate for child and adolescent learners'),
-          CurriculumCompetency('6.2', 'Appraise a learning environment that is responsive to learners from various family background, economic level groupings, and socio-cultural affiliation'),
-          CurriculumCompetency('6.3', "Demonstrate understanding of differentiated teaching to suit the learner's gender, strengths, interests, experiences and needs"),
-          CurriculumCompetency('6.4', 'Draw implications of research findings related to child development along biological, cognitive, linguistic, socio-cultural dimensions'),
+          CurriculumCompetency('6.1', 'Demonstrate understanding of principles in constructing traditional and alternative/authentic forms of high-quality assessment'),
+          CurriculumCompetency('6.2', 'Apply knowledge and skills in developing and using assessment tools for formative and summative purposes'),
+          CurriculumCompetency('6.3', 'Comprehend and apply basic concepts of statistics in educational assessment and evaluation'),
         ],
       ),
       CurriculumSubject(
-        name: 'Validating theoretical knowledge in the actual assessment of learning',
+        name: 'Assessment in Learning 2',
         competencies: [
-          CurriculumCompetency('7.1', 'Demonstrate understanding of principles in constructing traditional, alternative/authentic forms of high quality assessment'),
-          CurriculumCompetency('7.2', 'Apply knowledge and skills in the development and use of assessment tools for formative and summative purposes'),
-          CurriculumCompetency('7.3', 'Apply rules in test construction and use of authentic assessment tools for product and process assessment'),
-          CurriculumCompetency('7.4', 'Demonstrate skills in interpreting assessment results to improve learning'),
-          CurriculumCompetency('7.5', 'Comprehend and apply basic concepts of statistics in educational assessment and evaluation'),
-          CurriculumCompetency('7.6', 'Demonstrate knowledge of providing timely, accurate and constructive feedback to learners and parents'),
+          CurriculumCompetency('7.1', 'Apply rules of test construction and use of authentic assessment tools for product and process assessment'),
+          CurriculumCompetency('7.2', 'Demonstrate skills in interpreting assessment results to improve learning'),
+          CurriculumCompetency('7.3', 'Demonstrate knowledge of providing timely, accurate and constructive feedback to learners and parents'),
         ],
       ),
       CurriculumSubject(
-        name: 'Documentation of Experiential Learning',
+        name: 'Technology for Teaching and Learning 1',
         competencies: [
-          CurriculumCompetency('8.1', 'Describe authentic experiential learning from field study and actual classroom immersion as a prospective teacher'),
-          CurriculumCompetency('8.2', 'Demonstrate skills in teaching assistantship and guided mentored classroom teaching'),
-          CurriculumCompetency('8.3', 'Prepare portfolio on process of learning behavior, motivation, classroom management and assessment from direct observation of teaching learning episodes in an actual school environment'),
-          CurriculumCompetency('8.4', 'Demonstrate reflective thinking and teaching'),
+          CurriculumCompetency('8.1', 'Demonstrate skills in developing and using a variety of conventional and non-conventional resources, including ICT, to address the learning goals and needs of various learners'),
         ],
       ),
       CurriculumSubject(
-        name: 'Action Research',
+        name: 'The Teacher and the School Curriculum',
         competencies: [
-          CurriculumCompetency('9.1', 'Demonstrate ability to identify teaching/learning problems and offer recommendations based on research'),
+          CurriculumCompetency('9.1', 'Demonstrate research-based knowledge of the concepts, theories and principles in curriculum planning, design, development and evaluation'),
+        ],
+      ),
+      CurriculumSubject(
+        name: 'Building and Enhancing New Literacies Across the Curriculum',
+        competencies: [
+          CurriculumCompetency('10.1', 'Demonstrate knowledge of teaching strategies that build and enhance new literacies (multicultural, social, media, financial, cyber/digital, ecological, arts-and-creativity) across the curriculum'),
+          CurriculumCompetency('10.2', 'Utilize the concepts of 21st-century new literacies (globalization and multicultural, social, media, financial, cyber, digital, eco, arts and creativity literacies; interdisciplinary explorations) and shared cultural practices across learning areas'),
+        ],
+      ),
+      CurriculumSubject(
+        name: 'Field Study 1',
+        competencies: [
+          CurriculumCompetency('11.1', 'Prepare a portfolio on the process of learning behavior, motivation, classroom management and assessment drawn from direct observation of teaching-learning episodes in an actual school'),
+        ],
+      ),
+      CurriculumSubject(
+        name: 'Field Study 2',
+        competencies: [
+          CurriculumCompetency('12.1', 'Demonstrate skills in teaching assistantship and guided, mentored classroom teaching'),
+        ],
+      ),
+      CurriculumSubject(
+        name: 'Teaching Internship',
+        competencies: [
+          CurriculumCompetency('13.1', 'Describe authentic experiential learning from field study and actual classroom immersion as a prospective teacher'),
+          CurriculumCompetency('13.2', 'Demonstrate reflective thinking and teaching'),
+          CurriculumCompetency('13.3', 'Demonstrate ability to identify teaching-learning problems and offer research-based recommendations (action research)'),
         ],
       ),
     ],

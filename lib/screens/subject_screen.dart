@@ -59,6 +59,14 @@ class _SubjectScreenState extends State<SubjectScreen> {
     }
   }
 
+  void _showLocked(String previousName) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text('Finish "$previousName" first to unlock this subject.'),
+      ));
+  }
+
   void _openQuiz(Widget screen) {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
   }
@@ -204,7 +212,12 @@ class _SubjectScreenState extends State<SubjectScreen> {
                 item.subject['code'] as String?,
                 item.subject['colorHex'] as String?,
               ),
+              locked: item.isLocked,
               onTap: () {
+                if (item.isLocked) {
+                  _showLocked(item.lockedByName!);
+                  return;
+                }
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => SubjectDetailScreen(

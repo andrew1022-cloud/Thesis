@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../controllers/home_controller.dart';
+import '../services/subject_lock.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/quest_widgets.dart';
 import 'analytics_screen.dart';
@@ -355,6 +356,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openSubject(String subjectId) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final lockedBy = await lockedByPrerequisite(uid, subjectId);
+    if (!mounted) return;
+    if (lockedBy != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text('Finish "$lockedBy" first to unlock this subject.'),
+        ));
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => SubjectDetailScreen(subjectId: subjectId),
@@ -364,6 +376,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _resumeLesson(Map<String, dynamic> last) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final lockedBy =
+        await lockedByPrerequisite(uid, last['subjectId'] as String);
+    if (!mounted) return;
+    if (lockedBy != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text('Finish "$lockedBy" first to unlock this subject.'),
+        ));
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => LessonScreen(

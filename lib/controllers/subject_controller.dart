@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/curriculum_data.dart';
 import '../services/local_db_fast.dart';
 import '../services/local_db_service.dart';
+import '../services/subject_lock.dart';
 
 /// One subject row on the Subjects screen, with its competency
 /// (lesson) completion count.
@@ -12,11 +13,18 @@ class SubjectProgressItem {
   final int totalCount;
   final int progressPercent;
 
+  /// Name of the previous subject that must be finished first, or
+  /// null when this subject is open.
+  final String? lockedByName;
+
+  bool get isLocked => lockedByName != null;
+
   SubjectProgressItem({
     required this.subject,
     required this.completedCount,
     required this.totalCount,
     required this.progressPercent,
+    this.lockedByName,
   });
 }
 
@@ -88,6 +96,8 @@ class SubjectController extends ChangeNotifier {
 
     for (final category in kFixedCurriculum) {
       final items = <SubjectProgressItem>[];
+      final sequential = kSequentialCategories.contains(category.code);
+      String? lockedBy; // previous subject's name while the chain is broken
 
       for (var s = 0; s < category.subjects.length; s++) {
         final curriculumSubject = category.subjects[s];
@@ -116,7 +126,12 @@ class SubjectController extends ChangeNotifier {
           completedCount: completed,
           totalCount: totalCount,
           progressPercent: percent,
+          lockedByName: lockedBy,
         ));
+
+        if (sequential && (lockedBy != null || completed < totalCount)) {
+          lockedBy = curriculumSubject.name;
+        }
       }
 
       newGroups.add(SubjectGroup(

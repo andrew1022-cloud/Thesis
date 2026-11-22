@@ -18,6 +18,7 @@ class SubjectCompetencyRow extends StatelessWidget {
   final int progressPercent;
   final Color color;
   final VoidCallback? onTap;
+  final bool locked;
 
   const SubjectCompetencyRow({
     super.key,
@@ -28,6 +29,7 @@ class SubjectCompetencyRow extends StatelessWidget {
     required this.progressPercent,
     required this.color,
     this.onTap,
+    this.locked = false,
   });
 
   @override
@@ -36,7 +38,9 @@ class SubjectCompetencyRow extends StatelessWidget {
         ? '$completedCount out of $totalCount Competency'
         : '$completedCount out of $totalCount Competencies';
 
-    return Material(
+    return Opacity(
+      opacity: locked ? 0.55 : 1,
+      child: Material(
       color: Theme.of(context).cardColor,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
@@ -49,8 +53,11 @@ class SubjectCompetencyRow extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 16,
-                backgroundColor: color,
-                child: Text(
+                backgroundColor: locked ? Colors.grey : color,
+                child: locked
+                    ? const Icon(Icons.lock_rounded,
+                        color: Colors.white, size: 16)
+                    : Text(
                   code,
                   style: const TextStyle(
                     color: Colors.white,
@@ -89,6 +96,7 @@ class SubjectCompetencyRow extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }
