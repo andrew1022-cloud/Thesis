@@ -99,15 +99,13 @@ const List<CurriculumCategory> kFixedCurriculum = [
       CurriculumSubject(
         name: 'The Contemporary World',
         competencies: [
-          CurriculumCompetency('8.1', 'Illustrate ways of relating global issues and concerns with local and global realities'),
-          CurriculumCompetency('8.2', 'Identify ways by which the Philippines may participate in efforts to mitigate global problems'),
+          CurriculumCompetency('8.1', 'Illustrate ways of relating global issues and concerns with local and global realities and identify ways by which the Philippines may participate in efforts to mitigate global problems'),
         ],
       ),
       CurriculumSubject(
         name: 'Art Appreciation',
         competencies: [
-          CurriculumCompetency('9.1', 'Demonstrate the ability to interpret artistic creations as expressions of the finer things in life'),
-          CurriculumCompetency('9.2', 'Manifest informed appreciation of various forms of art'),
+          CurriculumCompetency('9.1', 'Demonstrate the ability to interpret artistic creations as expressions of the finer things in life and manifest informed appreciation of various forms of art'),
         ],
       ),
       CurriculumSubject(
